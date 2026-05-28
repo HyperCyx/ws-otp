@@ -1,7 +1,6 @@
 const Redis = require('ioredis');
 const logger = require('../utils/logger');
 
-let client;
 
 // ── In-Memory Redis Mock Fallback ───────────────────────────────────────────
 class MemoryRedisMock {
@@ -95,6 +94,10 @@ class MemoryRedisMock {
   }
 }
 
+// Pre-initialize with mock so getRedis() always works — even before connectRedis() is called.
+// connectRedis() upgrades this to a real Redis connection if credentials are configured.
+let client = new MemoryRedisMock();
+
 async function connectRedis() {
   // Support REDIS_URL (used by Render, Railway, Heroku, etc.)
   // OR individual REDIS_HOST / REDIS_PORT / REDIS_PASSWORD variables
@@ -174,10 +177,6 @@ async function connectRedis() {
 }
 
 function getRedis() {
-  if (!client) {
-    logger.warn('⚠️ getRedis() called before initialization, returning temporary local memory mock');
-    return new MemoryRedisMock();
-  }
   return client;
 }
 

@@ -4,41 +4,24 @@ const { getRedis } = require('../config/redis');
 const logger = require('../utils/logger');
 
 function createLimiter(options) {
-  // ── Lazy store: created on first request, NOT at module-load time ──────────
-  // This prevents "getRedis() called before initialization" warnings because
-  // the rate limiter modules are require()'d before connectRedis() runs.
-  let store;
-  let storeInitialized = false;
-
-  function getStore() {
-    if (storeInitialized) return store;
-    storeInitialized = true;
+  const store = (() => {
     try {
-      store = new RedisStore({
+      return new RedisStore({
         sendCommand: (...args) => getRedis().call(...args),
         prefix: `rl:${options.prefix || 'default'}:`,
       });
     } catch {
       logger.warn('Redis store unavailable for rate limiter, using memory store');
-      store = undefined; // Falls back to express-rate-limit MemoryStore
+      return undefined; // Falls back to express-rate-limit MemoryStore
     }
-    return store;
-  }
+  })();
 
   return rateLimit({
     windowMs: options.windowMs || parseInt(process.env.RATE_LIMIT_WINDOW_MS || '900000'),
     max: options.max || parseInt(process.env.RATE_LIMIT_MAX || '100'),
     standardHeaders: true,
     legacyHeaders: false,
-    // Provide store as a lazy getter so it's only resolved on the first request
-    store: new Proxy({}, {
-      get(_, prop) {
-        const s = getStore();
-        if (!s) return undefined;
-        const val = s[prop];
-        return typeof val === 'function' ? val.bind(s) : val;
-      },
-    }),
+    store,
     keyGenerator: (req) => {
       // Rate limit by user ID if authenticated, else by IP
       return req.user?.id ? `user:${req.user.id}` : req.ip;
