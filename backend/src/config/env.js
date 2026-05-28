@@ -17,8 +17,11 @@ const envSchema = z.object({
   DB_CONNECTION_LIMIT: z.string().default('20'),
 
   // Redis (optional — falls back to in-memory mock)
-  REDIS_HOST: z.string().default('localhost'),
-  REDIS_PORT: z.string().default('6379'),
+  // Prefer REDIS_URL (Render/Railway/Heroku format: redis://... or rediss://...)
+  // OR use individual REDIS_HOST / REDIS_PORT / REDIS_PASSWORD
+  REDIS_URL: z.string().url().optional(),
+  REDIS_HOST: z.string().optional(),
+  REDIS_PORT: z.string().optional(),
   REDIS_PASSWORD: z.string().optional(),
   REDIS_PREFIX: z.string().default('otp:'),
 

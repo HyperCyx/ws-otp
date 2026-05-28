@@ -96,26 +96,63 @@ class MemoryRedisMock {
 }
 
 async function connectRedis() {
+  // Support REDIS_URL (used by Render, Railway, Heroku, etc.)
+  // OR individual REDIS_HOST / REDIS_PORT / REDIS_PASSWORD variables
+  const redisUrl = process.env.REDIS_URL;
+  const redisHost = process.env.REDIS_HOST;
+  const redisPort = process.env.REDIS_PORT;
+
+  const hasRedisConfig = redisUrl || redisHost || redisPort;
+
+  if (!hasRedisConfig) {
+    logger.warn(
+      '⚠️ No Redis config found (REDIS_URL / REDIS_HOST not set). ' +
+      'Using in-memory mock — data will NOT persist across restarts. ' +
+      'Set REDIS_URL in your environment (e.g. on Render: New → Redis → copy Internal URL).'
+    );
+    client = new MemoryRedisMock();
+    await client.connect();
+    return client;
+  }
+
   try {
-    const tempClient = new Redis({
-      host: process.env.REDIS_HOST || 'localhost',
-      port: parseInt(process.env.REDIS_PORT || '6379'),
-      password: process.env.REDIS_PASSWORD || undefined,
-      keyPrefix: process.env.REDIS_PREFIX || 'otp:',
-      retryStrategy(times) {
-        if (times > 1) return null; // stop trying quickly so we fall back immediately
-        const delay = 50;
-        return delay;
-      },
-      maxRetriesPerRequest: 1,
-      enableReadyCheck: false,
-      lazyConnect: true,
-    });
+    // Build ioredis options: prefer REDIS_URL, fall back to host/port/password
+    const redisOptions = redisUrl
+      ? {
+          // Parse from URL; ioredis accepts a connection string directly
+          // but we still set keyPrefix and retry options
+          lazyConnect: true,
+          retryStrategy(times) {
+            if (times > 1) return null;
+            return 50;
+          },
+          maxRetriesPerRequest: 1,
+          enableReadyCheck: false,
+          keyPrefix: process.env.REDIS_PREFIX || 'otp:',
+          // If the URL uses rediss:// (TLS), ioredis handles it automatically
+          tls: redisUrl.startsWith('rediss://') ? {} : undefined,
+        }
+      : {
+          host: redisHost || 'localhost',
+          port: parseInt(redisPort || '6379'),
+          password: process.env.REDIS_PASSWORD || undefined,
+          keyPrefix: process.env.REDIS_PREFIX || 'otp:',
+          retryStrategy(times) {
+            if (times > 1) return null;
+            return 50;
+          },
+          maxRetriesPerRequest: 1,
+          enableReadyCheck: false,
+          lazyConnect: true,
+        };
+
+    const tempClient = redisUrl
+      ? new Redis(redisUrl, redisOptions)
+      : new Redis(redisOptions);
 
     tempClient.on('error', (err) => {
-      // Catch initial connection errors and trigger fallback
       if (!client || !(client instanceof MemoryRedisMock)) {
-        logger.warn('⚠️ Real Redis connection failed, falling back to local in-memory mock');
+        logger.warn('⚠️ Real Redis connection failed, falling back to local in-memory mock', { error: err.message });
         client = new MemoryRedisMock();
         client.connect();
       }
@@ -125,7 +162,8 @@ async function connectRedis() {
     client = tempClient;
     client.on('error', (err) => logger.error('Redis error', { error: err.message }));
     client.on('reconnecting', () => logger.warn('Redis reconnecting...'));
-    client.on('ready', () => logger.info('Redis connection ready'));
+    client.on('ready', () => logger.info('✅ Redis connection ready'));
+    logger.info('✅ Redis connected successfully', { via: redisUrl ? 'REDIS_URL' : `${redisHost}:${redisPort}` });
     return client;
   } catch (err) {
     logger.warn('⚠️ Real Redis connection threw error. Falling back to local in-memory mock Redis!', { error: err.message });
