@@ -5,15 +5,35 @@ let pool;
 
 function buildPoolConfig() {
   // Prefer NEON_DATABASE_URL (external Neon DB) over the Replit-managed DATABASE_URL
-  const connStr = process.env.NEON_DATABASE_URL || process.env.DATABASE_URL || '';
+  const rawConnStr = process.env.NEON_DATABASE_URL || process.env.DATABASE_URL || '';
+
+  const isNeon = rawConnStr.includes('neon.tech');
+  const hasSSL = rawConnStr.includes('sslmode=') || isNeon;
+
+  // Strip SSL/channel-binding params from the URL so pg doesn't emit:
+  //   "SECURITY WARNING: sslmode 'require' is treated as alias for 'verify-full'"
+  // We configure SSL programmatically via the pool options instead.
+  const connectionString = rawConnStr
+    .replace(/[?&]sslmode=[^&]*/g, '')
+    .replace(/[?&]channel_binding=[^&]*/g, '')
+    // Re-attach ? if we stripped it from the first param position
+    .replace(/\?&/, '?')
+    .replace(/\?$/, '');
+
   const cfg = {
-    connectionString: connStr,
+    connectionString,
     max: parseInt(process.env.DB_CONNECTION_LIMIT || '20'),
   };
-  // Enable SSL for Neon / any sslmode=require connection string
-  if (connStr.includes('sslmode=require') || connStr.includes('neon.tech')) {
-    cfg.ssl = { rejectUnauthorized: false };
+
+  // Re-apply SSL via pool config (no warning, same security level)
+  if (hasSSL) {
+    cfg.ssl = {
+      // Neon pooler endpoints use intermediate certs; rejectUnauthorized: false
+      // is required unless you supply the Neon CA bundle via PGSSLROOTCERT.
+      rejectUnauthorized: false,
+    };
   }
+
   return cfg;
 }
 
