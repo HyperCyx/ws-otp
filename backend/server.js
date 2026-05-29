@@ -23,6 +23,7 @@ const walletRoutes = require('./src/routes/wallet');
 const withdrawalRoutes = require('./src/routes/withdrawals');
 const countryRoutes = require('./src/routes/countries');
 const adminRoutes = require('./src/routes/admin');
+const telegramRoutes = require('./src/routes/telegram');
 
 // Validate environment
 validateEnv();
@@ -84,6 +85,7 @@ app.use('/api/wallet', walletRoutes);
 app.use('/api/withdrawals', withdrawalRoutes);
 app.use('/api/countries', countryRoutes);
 app.use('/api/admin', adminRoutes);
+app.use('/api/telegram', telegramRoutes);
 
 // ── Public settings (language, min withdrawal) ─────────────────────────────
 app.get('/api/settings', require('./src/middleware/auth').requireAuth, async (req, res, next) => {
