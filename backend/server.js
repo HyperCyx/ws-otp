@@ -13,6 +13,7 @@ const { connectRedis } = require('./src/config/redis');
 const { initSocketServer } = require('./src/services/socketService');
 const { startTokenRefresher } = require('./src/services/externalApi');
 const { resumePollingOnStartup } = require('./src/workers/pollingWorker');
+const { ensureTelegramWebhook } = require('./src/services/telegramBot');
 const logger = require('./src/utils/logger');
 const { morganStream } = require('./src/utils/logger');
 
@@ -154,6 +155,8 @@ async function startServer() {
       logger.info(`🚀 Server running on port ${PORT}`);
       logger.info(`📡 WebSocket server ready`);
     });
+
+    await ensureTelegramWebhook();
 
     // Resume polling for any activations that were in-flight before restart
     await resumePollingOnStartup();

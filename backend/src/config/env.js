@@ -7,6 +7,8 @@ const envSchema = z.object({
   // Telegram
   TELEGRAM_BOT_TOKEN: z.string().min(10, 'TELEGRAM_BOT_TOKEN is required'),
   ADMIN_TELEGRAM_IDS: z.string().default(''),
+  TELEGRAM_WEBHOOK_URL: z.string().url().optional(),
+  TELEGRAM_AUTO_WEBHOOK: z.string().default('false'),
 
   // JWT
   JWT_SECRET: z.string().min(32, 'JWT_SECRET must be at least 32 characters'),
