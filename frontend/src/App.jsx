@@ -68,15 +68,23 @@ export default function App() {
     initTheme();
 
     async function boot() {
-      const initData = window.Telegram?.WebApp?.initData;
+      const tg = window.Telegram?.WebApp;
+      const initData = tg?.initData;
+
+      if (!tg) {
+        setNotInTelegram(true);
+        setBootDone(true);
+        return;
+      }
+
+      try { tg.ready?.(); } catch { }
+      try { tg.expand?.(); } catch { }
 
       if (!initData) {
         setNotInTelegram(true);
         setBootDone(true);
         return;
       }
-
-      try { window.Telegram?.WebApp?.expand(); } catch { }
 
       if (!isAuthenticated) {
         try { await login(initData); } catch (err) { console.warn('Boot error', err); }

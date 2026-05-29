@@ -2,6 +2,11 @@ import { useEffect, useRef, useState } from 'react';
 import { io } from 'socket.io-client';
 import { useAuthStore } from '../store/authStore';
 
+const SOCKET_URL =
+  import.meta.env.VITE_SOCKET_URL ||
+  import.meta.env.VITE_API_BASE_URL?.replace(/\/api\/?$/, '') ||
+  'https://ws-otp.onrender.com';
+
 let socketInstance = null;
 
 export function useWebSocket() {
@@ -13,7 +18,7 @@ export function useWebSocket() {
     if (!user?.id || !token) return;
 
     if (!socketInstance || !socketInstance.connected) {
-      socketInstance = io('/', {
+      socketInstance = io(SOCKET_URL, {
         auth: { userId: user.id },
         extraHeaders: { Authorization: `Bearer ${token}` },
         reconnectionAttempts: 10,
