@@ -139,7 +139,7 @@ app.use((err, req, res, next) => {
 async function startServer() {
   try {
     await connectDB();
-    logger.info('✅ MySQL connected');
+    logger.info('✅ PostgreSQL (Neon) connected');
 
     await connectRedis();
     logger.info('✅ Redis connected');

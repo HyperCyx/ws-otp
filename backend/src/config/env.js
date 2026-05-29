@@ -12,8 +12,10 @@ const envSchema = z.object({
   JWT_SECRET: z.string().min(32, 'JWT_SECRET must be at least 32 characters'),
   JWT_EXPIRES_IN: z.string().default('7d'),
 
-  // Database (PostgreSQL via DATABASE_URL)
-  DATABASE_URL: z.string().min(1, 'DATABASE_URL is required').optional(),
+  // Database (PostgreSQL — Neon or standard)
+  // Accepts either NEON_DATABASE_URL (preferred) or DATABASE_URL
+  NEON_DATABASE_URL: z.string().url().optional(),
+  DATABASE_URL: z.string().url().optional(),
   DB_CONNECTION_LIMIT: z.string().default('20'),
 
   // Redis (optional — falls back to in-memory mock)
