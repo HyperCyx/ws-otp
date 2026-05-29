@@ -13,7 +13,8 @@ export function useWebSocket() {
     if (!user?.id || !token) return;
 
     if (!socketInstance || !socketInstance.connected) {
-      socketInstance = io('/', {
+      const socketURL = import.meta.env.VITE_API_URL || '/';
+      socketInstance = io(socketURL, {
         auth: { userId: user.id },
         extraHeaders: { Authorization: `Bearer ${token}` },
         reconnectionAttempts: 10,
