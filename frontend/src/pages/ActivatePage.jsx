@@ -556,13 +556,9 @@ export default function ActivatePage() {
               </div>
               <button
                 onClick={resetFlow}
-                disabled={cooldownSecs > 0}
                 className="btn-secondary w-full py-3"
-                style={cooldownSecs > 0 ? { opacity: 0.5, cursor: 'not-allowed' } : {}}
               >
-                {cooldownSecs > 0
-                  ? `Wait ${String(Math.floor(cooldownSecs / 60)).padStart(2, '0')}:${String(cooldownSecs % 60).padStart(2, '0')}`
-                  : t('activate.startNew')}
+                {t('activate.startNew')}
               </button>
             </div>
           )}
