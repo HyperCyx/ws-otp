@@ -41,7 +41,7 @@ async function createActivation(req, res, next) {
 
     const [existingActive] = await query(
       `SELECT id FROM activations
-       WHERE user_id = ? AND phone_full = ? AND status IN ('pending','in_progress','otp_uploaded')`,
+       WHERE user_id = $1 AND phone_full = $2 AND status IN ('pending','in_progress','otp_uploaded')`,
       [userId, phoneFull]
     );
 
@@ -57,7 +57,7 @@ async function createActivation(req, res, next) {
     const COOLDOWN_MS = 3 * 60 * 1000;
     const [cooldown] = await query(
       `SELECT failed_at, fail_reason FROM number_cooldowns
-       WHERE user_id = ? AND phone_full = ?
+       WHERE user_id = $1 AND phone_full = $2
          AND failed_at > NOW() - INTERVAL '3 minutes'`,
       [userId, phoneFull]
     );
@@ -99,7 +99,7 @@ async function createActivation(req, res, next) {
     const insertResult = await query(
       `INSERT INTO activations
          (user_id, phone_full, phone_cc, phone_local, country_price_id, payout_amount, status, api_add_response)
-       VALUES (?, ?, ?, ?, ?, ?, 'pending', ?)
+       VALUES ($1, $2, $3, $4, $5, $6, 'pending', $7)
        RETURNING id`,
       [
         userId,
@@ -145,14 +145,14 @@ async function listActivations(req, res, next) {
       `SELECT a.*, cp.country_name, cp.flag_emoji, cp.iso_code
        FROM activations a
        LEFT JOIN country_prices cp ON cp.id = a.country_price_id
-       WHERE a.user_id = ?
+       WHERE a.user_id = $1
        ORDER BY a.created_at DESC
-       LIMIT ? OFFSET ?`,
+       LIMIT $2 OFFSET $3`,
       [userId, limit, offset]
     );
 
     const [countRow] = await query(
-      'SELECT COUNT(*) as total FROM activations WHERE user_id = ?',
+      'SELECT COUNT(*) as total FROM activations WHERE user_id = $1',
       [userId]
     );
 
@@ -180,7 +180,7 @@ async function getActivation(req, res, next) {
       `SELECT a.*, cp.country_name, cp.flag_emoji, cp.iso_code
        FROM activations a
        LEFT JOIN country_prices cp ON cp.id = a.country_price_id
-       WHERE a.id = ? AND a.user_id = ?`,
+       WHERE a.id = $1 AND a.user_id = $2`,
       [id, userId]
     );
 
@@ -284,7 +284,7 @@ async function cancelActivation(req, res, next) {
 
   try {
     const [activation] = await query(
-      `SELECT * FROM activations WHERE id = ? AND user_id = ? FOR UPDATE`,
+      `SELECT * FROM activations WHERE id = $1 AND user_id = $2`,
       [id, userId]
     );
 
@@ -303,7 +303,7 @@ async function cancelActivation(req, res, next) {
     cancelOtpTimeout(Number(id));
 
     // Delete from DB immediately — don't wait for the external API
-    await query('DELETE FROM activations WHERE id = ?', [id]);
+    await query('DELETE FROM activations WHERE id = $1', [id]);
 
     // Fire-and-forget external API delete (retries happen in background, don't block the user)
     deleteNumberForCountry(activation.phone_cc, activation.phone_local)

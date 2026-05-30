@@ -7,6 +7,38 @@ import { useWebSocket } from '../hooks/useWebSocket.js';
 import { useLang } from '../context/LangContext';
 import api from '../api/client';
 
+// Active statuses that warrant a countdown display
+const ACTIVE_STATUSES = new Set(['pending', 'in_progress', 'awaiting_otp', 'otp_uploaded']);
+const ACTIVATION_WINDOW_MS = 10 * 60 * 1000; // 10-minute polling window
+
+/**
+ * CountdownBadge — live MM:SS countdown for active activations in Recent Activity.
+ */
+function CountdownBadge({ createdAt }) {
+  const [remaining, setRemaining] = useState(0);
+
+  useEffect(() => {
+    if (!createdAt) return;
+    const end = new Date(createdAt).getTime() + ACTIVATION_WINDOW_MS;
+    const tick = () => setRemaining(Math.max(0, end - Date.now()));
+    tick();
+    const id = setInterval(tick, 1000);
+    return () => clearInterval(id);
+  }, [createdAt]);
+
+  if (remaining <= 0) return null;
+  const mins = String(Math.floor(remaining / 60000)).padStart(2, '0');
+  const secs = String(Math.floor((remaining % 60000) / 1000)).padStart(2, '0');
+  return (
+    <span
+      className="text-xs font-bold tabular-nums"
+      style={{ color: 'var(--accent-blue)' }}
+    >
+      <Clock size={9} className="inline mr-0.5" />{mins}:{secs}
+    </span>
+  );
+}
+
 export default function HomePage() {
   const { user } = useAuthStore();
   const { balance, totalEarned, lockedBalance, fetchWallet } = useWalletStore();
@@ -158,6 +190,12 @@ export default function HomePage() {
                       {cfg.spin && <Loader2 size={9} className="animate-spin inline mr-1" />}
                       {cfg.label}
                     </span>
+                    {/* Bug-fix: show live countdown for active activations */}
+                    {ACTIVE_STATUSES.has(act.status) && act.created_at && (
+                      <p className="mt-0.5">
+                        <CountdownBadge createdAt={act.created_at} />
+                      </p>
+                    )}
                     {act.status === 'success' && (
                       <p className="text-xs font-bold mt-0.5" style={{ color: 'var(--accent-green)' }}>
                         +${parseFloat(act.payout_amount || 0).toFixed(4)}

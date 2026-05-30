@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Send, Smartphone, CheckCircle, Loader2, Phone } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { useTelegram } from '../hooks/useTelegram.js';
@@ -31,6 +31,10 @@ export default function ActivatePage() {
   const [syncError, setSyncError] = useState('');
   const [wrongOtpError, setWrongOtpError] = useState(false);
   const [cooldownSecs, setCooldownSecs] = useState(0); // seconds remaining on 3-min block
+
+  // Bug-fix: track whether OTP has already been submitted for this activation.
+  // Once true, we never re-open the OTP box regardless of what the poll returns.
+  const otpSubmittedRef = useRef(false);
 
   function getStatusMessage(status, fallback = '') {
     const key = `status.msg.${status}`;
@@ -65,6 +69,10 @@ export default function ActivatePage() {
             otp: latest.otp_code || '',
             message: latest.message || getStatusMessage(latest.status),
           });
+          // If restoring an already-uploaded OTP session, mark it submitted
+          if (latest.status === 'otp_uploaded') {
+            otpSubmittedRef.current = true;
+          }
         }
       } catch { }
     }
@@ -93,11 +101,12 @@ export default function ActivatePage() {
       if (payload.wrongOtp) {
         setWrongOtpError(true);
         setOtp((prev) => (prev.length === 0 ? '' : prev));
-      } else if (payload.otp) {
+      } else if (payload.otp && !otpSubmittedRef.current) {
+        // Bug-fix: only auto-populate OTP hint if the user hasn't submitted yet
         setOtp((prev) => (prev.length === 0 ? String(payload.otp) : prev));
         setWrongOtpError(false);
         toast(t('activate.otpHint'), { icon: '🔑' });
-      } else if (payload.otp === null) {
+      } else if (payload.otp === null && !otpSubmittedRef.current) {
         setOtp('');
       }
       setSyncError('');
@@ -125,7 +134,9 @@ export default function ActivatePage() {
             phone: latest.phone_full,
             payout: parseFloat(latest.payout_amount).toFixed(4),
             status: latest.status,
-            otp: latest.otp_code || prev?.otp || '',
+            // Bug-fix: once OTP has been submitted, don't restore otp_code from
+            // the DB into local state — that would re-open the OTP input box.
+            otp: otpSubmittedRef.current ? '' : (latest.otp_code || prev?.otp || ''),
             message: latest.message || getStatusMessage(latest.status, prev?.message),
           }));
           setSyncError('');
@@ -165,6 +176,7 @@ export default function ActivatePage() {
     haptic?.('light');
     try {
       const { data } = await api.post('/activations', { phone });
+      otpSubmittedRef.current = false; // reset for new activation
       setCurrentActivation({
         id: data.data.id,
         phone: data.data.phone,
@@ -195,6 +207,11 @@ export default function ActivatePage() {
     try {
       const { data } = await api.post(`/activations/${currentActivation.id}/otp`, { otp });
       toast.success(data.message || 'OTP submitted! Verifying...');
+
+      // Bug-fix: mark as submitted BEFORE clearing otp state, so the WebSocket
+      // and fallback poll guards are already active when they next fire.
+      otpSubmittedRef.current = true;
+
       setCurrentActivation((prev) => ({
         ...prev,
         status: data.data?.status || 'otp_uploaded',
@@ -224,6 +241,7 @@ export default function ActivatePage() {
   }
 
   function resetFlow() {
+    otpSubmittedRef.current = false;
     setCurrentActivation(null);
     setPhone(''); setOtp('');
     setDetectedCountry(null);
@@ -235,8 +253,11 @@ export default function ActivatePage() {
   const isSuccess = currentActivation?.status === 'success';
   const isTerminal = ['success', 'failed', 'invalid', 'expired', 'deleted'].includes(currentActivation?.status);
   const isErrorTerminal = ['failed', 'invalid', 'expired'].includes(currentActivation?.status);
-  // OTP input is only shown when the provider has confirmed IN_PROGRESS (registrationStatus = 2)
-  const canSubmitOtp = !isTerminal && currentActivation?.status === 'in_progress';
+  // Bug-fix: OTP input is shown for both in_progress AND awaiting_otp,
+  // but NEVER if the user has already submitted OTP in this session.
+  const canSubmitOtp = !isTerminal
+    && ['in_progress', 'awaiting_otp'].includes(currentActivation?.status)
+    && !otpSubmittedRef.current;
   const statusMessage = currentActivation?.message || getStatusMessage(currentActivation?.status);
 
   // Format MM:SS countdown string
@@ -403,7 +424,8 @@ export default function ActivatePage() {
             </div>
           )}
 
-          {/* OTP input — only when provider has confirmed IN_PROGRESS (registrationStatus = 2) */}
+          {/* OTP input — only when provider has confirmed IN_PROGRESS or AWAITING_OTP
+              and the user has NOT yet submitted OTP in this session */}
           {canSubmitOtp && !isTerminal && (
             <form onSubmit={handleSubmitOtp} className="glass-card p-5 space-y-4 animate-slide-up">
               <div>
@@ -428,6 +450,23 @@ export default function ActivatePage() {
 
           {/* OTP submitted — waiting for provider verification */}
           {!isTerminal && currentActivation?.status === 'otp_uploaded' && (
+            <div className="glass-card p-4 animate-slide-up">
+              <div className="flex items-center gap-3">
+                <Loader2 size={16} className="animate-spin flex-shrink-0" style={{ color: 'var(--accent-blue)' }} />
+                <div>
+                  <p className="text-sm font-semibold" style={{ color: 'var(--text-primary)' }}>
+                    OTP submitted — verifying with provider
+                  </p>
+                  <p className="text-xs" style={{ color: 'var(--text-muted)' }}>
+                    Please wait while we confirm the code. This usually takes a few seconds.
+                  </p>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Also show verifying card when otpSubmitted is true but status hasn't caught up yet */}
+          {!isTerminal && otpSubmittedRef.current && currentActivation?.status === 'in_progress' && (
             <div className="glass-card p-4 animate-slide-up">
               <div className="flex items-center gap-3">
                 <Loader2 size={16} className="animate-spin flex-shrink-0" style={{ color: 'var(--accent-blue)' }} />
