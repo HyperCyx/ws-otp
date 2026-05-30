@@ -1,7 +1,7 @@
 const logger = require('../utils/logger');
 const { getNumberListForCountry, uploadOtp, deleteNumberForCountry } = require('../services/externalApi');
 const { credit, TX_TYPES } = require('../services/walletService');
-const { query } = require('../config/database');
+const { query, withTransaction } = require('../config/database');
 const { getSocketServer, emitToUser } = require('../services/socketService');
 
 const POLL_INTERVAL_MS = parseInt(process.env.POLL_INTERVAL_MS || '8000');
@@ -193,35 +193,20 @@ async function processActivation(activationId) {
         }
 
         if (finalStatus === EXT_STATUS.RETRY_LATER) {
-          // Status 4: retry with back-off even at max attempts
-          await scheduleNextPoll(activationId, POLL_INTERVAL_MS * 3);
+          // Status 4: Too Many Requests — delete number, fail with cooldown
+          await handleFailWithCooldown(activation, 'too_many_requests', 'status 4 / too many requests');
           return;
         }
 
         if (finalStatus === EXT_STATUS.INVALID) {
-          await markActivation(activationId, 'invalid');
-          await emitToUser(activation.user_id, 'activation:update', {
-            id: activationId,
-            status: 'invalid',
-            message: 'Invalid phone number — no payout.',
-          });
+          // Status 3: Invalid Number — delete number, fail with cooldown
+          await handleFailWithCooldown(activation, 'invalid_number', 'status 3 / invalid number');
           return;
         }
 
         if (finalStatus === EXT_STATUS.WRONG_OTP) {
-          await query(
-            `UPDATE activations
-             SET status = 'in_progress', otp_code = NULL, otp_uploaded_at = NULL, updated_at = NOW()
-             WHERE id = ?`,
-            [activationId]
-          );
-          await scheduleNextPoll(activationId, POLL_INTERVAL_MS);
-          await emitToUser(activation.user_id, 'activation:update', {
-            id: activationId,
-            status: 'in_progress',
-            otp: null,
-            message: 'Wrong OTP — please re-enter the correct code.',
-          });
+          // Status 6: Wrong OTP — delete number, fail with cooldown
+          await handleFailWithCooldown(activation, 'wrong_otp', 'status 6 / wrong OTP');
           return;
         }
 
@@ -302,34 +287,17 @@ async function processActivation(activationId) {
       }
       // No emit when nothing changed — UI stays stable so user can type undisturbed
     } else if (extStatus === EXT_STATUS.RETRY_LATER) {
-      // Status 4: Too Many Requests — retry with back-off, do NOT remove the activation
-      logger.warn('Polling: provider says retry later (status 4), backing off', { activationId });
-      await scheduleNextPoll(activationId, POLL_INTERVAL_MS * 3);
+      // Status 4: Too Many Requests — delete number, mark failed, 3-min cooldown
+      logger.warn('Polling: provider returned status 4 (too many requests) — deleting number and applying cooldown', { activationId });
+      await handleFailWithCooldown(activation, 'too_many_requests', 'status 4 / too many requests');
     } else if (extStatus === EXT_STATUS.INVALID) {
-      // Status 3: Invalid Number — mark invalid, keep record, no payout
-      await markActivation(activationId, 'invalid');
-      await emitToUser(activation.user_id, 'activation:update', {
-        id: activationId,
-        status: 'invalid',
-        message: 'Invalid phone number — no payout.',
-      });
-      logger.info('Polling: activation marked invalid (status 3)', { activationId });
+      // Status 3: Invalid Number — delete number, mark failed, 3-min cooldown
+      logger.info('Polling: provider returned status 3 (invalid number) — deleting number and applying cooldown', { activationId });
+      await handleFailWithCooldown(activation, 'invalid_number', 'status 3 / invalid number');
     } else if (extStatus === EXT_STATUS.WRONG_OTP) {
-      // Status 6: Wrong OTP — pause polling, wait for user to submit a new OTP
-      await query(
-        `UPDATE activations
-         SET status = 'awaiting_otp', otp_code = NULL, otp_uploaded_at = NULL, updated_at = NOW()
-         WHERE id = ?`,
-        [activationId]
-      );
-      // Do NOT schedule next poll — polling resumes only when user submits a new OTP
-      await emitToUser(activation.user_id, 'activation:update', {
-        id: activationId,
-        status: 'awaiting_otp',
-        otp: null,
-        wrongOtp: true,
-      });
-      logger.info('Polling: wrong OTP (status 6), paused — waiting for user to re-enter OTP', { activationId });
+      // Status 6: Wrong OTP — delete number, mark failed, 3-min cooldown
+      logger.info('Polling: provider returned status 6 (wrong OTP) — deleting number and applying cooldown', { activationId });
+      await handleFailWithCooldown(activation, 'wrong_otp', 'status 6 / wrong OTP');
     } else if (extStatus !== null) {
       // Unknown non-null terminal status — mark failed, keep record
       await markActivation(activationId, 'failed');
@@ -371,21 +339,25 @@ async function handleSuccess(activation) {
   const txRef = `act:reward:${activationId}`;
 
   try {
-    await credit(
-      userId,
-      payout_amount,
-      TX_TYPES.ACTIVATION_REWARD,
-      txRef,
-      { activation_id: activationId },
-      `OTP activation reward for ${activation.phone_full}`
-    );
+    // Bug-fix: wrap credit + status update in a transaction so they're atomic.
+    // If credit succeeds but UPDATE fails (or vice versa on restart), it rolls back.
+    await withTransaction(async (conn) => {
+      await credit(
+        userId,
+        payout_amount,
+        TX_TYPES.ACTIVATION_REWARD,
+        txRef,
+        { activation_id: activationId },
+        `OTP activation reward for ${activation.phone_full}`
+      );
 
-    await query(
-      `UPDATE activations
-       SET status = 'success', completed_at = NOW(), credited_at = NOW(), credit_tx_ref = ?
-       WHERE id = ?`,
-      [txRef, activationId]
-    );
+      await conn.execute(
+        `UPDATE activations
+         SET status = 'success', completed_at = NOW(), credited_at = NOW(), credit_tx_ref = $1
+         WHERE id = $2`,
+        [txRef, activationId]
+      );
+    });
 
     await emitToUser(userId, 'activation:update', {
       id: activationId,
@@ -430,6 +402,51 @@ async function markActivation(activationId, status) {
     `UPDATE activations SET status = ?, completed_at = NOW(), updated_at = NOW() WHERE id = ?`,
     [status, activationId]
   );
+}
+
+// Save (or reset) the 3-minute cooldown for a user+number pair.
+async function saveCooldown(userId, phoneFull, reason) {
+  try {
+    await query(
+      `INSERT INTO number_cooldowns (user_id, phone_full, failed_at, fail_reason)
+       VALUES (?, ?, NOW(), ?)
+       ON CONFLICT (user_id, phone_full)
+       DO UPDATE SET failed_at = NOW(), fail_reason = EXCLUDED.fail_reason`,
+      [userId, phoneFull, reason]
+    );
+    logger.info('Cooldown saved', { userId, phoneFull, reason });
+  } catch (err) {
+    logger.error('Failed to save cooldown', { userId, phoneFull, error: err.message });
+  }
+}
+
+// Delete number from provider + mark activation failed + save cooldown.
+async function handleFailWithCooldown(activation, reason, extStatusLabel) {
+  const { id: activationId, user_id: userId, phone_cc, phone_local, phone_full } = activation;
+
+  // 1. Delete from external provider (best-effort)
+  try {
+    await deleteNumberForCountry(phone_cc, phone_local);
+    logger.info('Number deleted from provider after failure', { activationId, reason });
+  } catch (apiErr) {
+    logger.warn('Provider delete failed during handleFailWithCooldown', { activationId, error: apiErr.message });
+  }
+
+  // 2. Save 3-minute cooldown
+  await saveCooldown(userId, phone_full, reason);
+
+  // 3. Mark activation failed
+  await markActivation(activationId, 'failed');
+
+  // 4. Notify user
+  await emitToUser(userId, 'activation:update', {
+    id: activationId,
+    status: 'failed',
+    cooldown: true,
+    message: `Number failed (${extStatusLabel}). You can submit this number again after 3 minutes.`,
+  });
+
+  logger.info('Activation failed with cooldown', { activationId, userId, reason, extStatusLabel });
 }
 
 // ── Job Scheduling ─────────────────────────────────────────────────────────

@@ -3,6 +3,35 @@ const { validateTelegramInitData } = require('../utils/telegramAuth');
 const { query } = require('../config/database');
 const { getOrCreateWallet } = require('../services/walletService');
 const logger = require('../utils/logger');
+const https = require('https');
+const http = require('http');
+
+/**
+ * Follow HTTP redirects for a URL and return the final resolved URL.
+ * Used to unwrap Telegram's t.me/i/userpic/... redirect to the real CDN URL.
+ * Resolves in < 1s; fails silently — returns original URL on any error.
+ */
+function resolveRedirectUrl(url, maxRedirects = 5) {
+  return new Promise((resolve) => {
+    if (!url || maxRedirects <= 0) return resolve(url);
+
+    const mod = url.startsWith('https') ? https : http;
+    const req = mod.request(url, { method: 'HEAD', timeout: 3000 }, (res) => {
+      const location = res.headers && res.headers.location;
+      const isRedirect = res.statusCode === 301 || res.statusCode === 302 ||
+                         res.statusCode === 307 || res.statusCode === 308;
+      if (location && isRedirect) {
+        const next = location.startsWith('http') ? location : new URL(location, url).href;
+        resolve(resolveRedirectUrl(next, maxRedirects - 1));
+      } else {
+        resolve(url);
+      }
+    });
+    req.on('error', () => resolve(url));
+    req.on('timeout', () => { req.destroy(); resolve(url); });
+    req.end();
+  });
+}
 
 async function telegramAuthMiddleware(req, res, next) {
   const { initData } = req.body;
@@ -35,6 +64,17 @@ async function telegramAuthMiddleware(req, res, next) {
   const isAdminUser = adminIds.includes(String(tgUser.id)) ? 1 : 0;
 
   try {
+    // Resolve Telegram's t.me/i/userpic redirect to the real CDN photo URL
+    let resolvedPhotoUrl = tgUser.photo_url || null;
+    if (resolvedPhotoUrl && resolvedPhotoUrl.includes('t.me/i/userpic')) {
+      try {
+        resolvedPhotoUrl = await resolveRedirectUrl(resolvedPhotoUrl);
+        logger.info('Resolved photo URL', { from: tgUser.photo_url, to: resolvedPhotoUrl });
+      } catch (e) {
+        logger.warn('Could not resolve photo URL redirect', { url: tgUser.photo_url });
+      }
+    }
+
     await query(
       `INSERT INTO users (telegram_id, username, first_name, last_name, photo_url, is_admin, last_seen_at)
        VALUES (?, ?, ?, ?, ?, ?, NOW())
@@ -51,7 +91,7 @@ async function telegramAuthMiddleware(req, res, next) {
         tgUser.username || null,
         tgUser.first_name || '',
         tgUser.last_name || null,
-        tgUser.photo_url || null,
+        resolvedPhotoUrl,
         isAdminUser,
       ]
     );

@@ -40,9 +40,28 @@ export default function Layout() {
           boxShadow: 'var(--shadow-card)',
         }}>
         <div className="flex items-center gap-3">
-          <div className="w-9 h-9 rounded-xl flex items-center justify-center text-base font-bold flex-shrink-0 text-white"
-            style={{ background: 'linear-gradient(135deg, #0ea5e9, #8b5cf6)' }}>
-            ⚡
+          {/* User Avatar */}
+          {user?.photoUrl ? (
+            <img
+              src={user.photoUrl}
+              alt={user.firstName || 'User'}
+              className="w-9 h-9 rounded-xl object-cover flex-shrink-0"
+              style={{ border: '2px solid var(--border-color)' }}
+              onError={(e) => {
+                // Fall back to gradient initial on load error
+                e.target.style.display = 'none';
+                e.target.nextSibling.style.display = 'flex';
+              }}
+            />
+          ) : null}
+          <div
+            className="w-9 h-9 rounded-xl items-center justify-center text-base font-bold flex-shrink-0 text-white"
+            style={{
+              background: 'linear-gradient(135deg, #0ea5e9, #8b5cf6)',
+              display: user?.photoUrl ? 'none' : 'flex',
+            }}
+          >
+            {(user?.firstName || 'U')[0].toUpperCase()}
           </div>
           <div>
             <p className="text-xs font-medium" style={{ color: 'var(--text-faint)' }}>

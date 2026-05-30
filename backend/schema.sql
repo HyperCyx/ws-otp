@@ -119,6 +119,18 @@ CREATE INDEX        IF NOT EXISTS idx_act_status  ON activations (status);
 CREATE INDEX        IF NOT EXISTS idx_act_phone   ON activations (phone_full);
 CREATE INDEX        IF NOT EXISTS idx_act_created ON activations (created_at);
 
+-- Number Cooldowns (3-minute block after status 3, 4, or 6 failures)
+CREATE TABLE IF NOT EXISTS number_cooldowns (
+  id          BIGSERIAL    PRIMARY KEY,
+  user_id     BIGINT       NOT NULL,
+  phone_full  VARCHAR(25)  NOT NULL,
+  failed_at   TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
+  fail_reason VARCHAR(30),
+  UNIQUE (user_id, phone_full)
+);
+CREATE INDEX IF NOT EXISTS idx_nc_user  ON number_cooldowns (user_id);
+CREATE INDEX IF NOT EXISTS idx_nc_phone ON number_cooldowns (phone_full);
+
 -- Withdrawals
 CREATE TABLE IF NOT EXISTS withdrawals (
   id          BIGSERIAL    PRIMARY KEY,

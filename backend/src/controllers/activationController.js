@@ -1,7 +1,7 @@
 const { parsePhone, isSupportedCountry } = require('../services/phoneParser');
 const { addNumber, uploadOtpForCountry, deleteNumberForCountry, getCountryCreds } = require('../services/externalApi');
 const { startPollingForActivation, scheduleNextPoll, cancelOtpTimeout } = require('../workers/pollingWorker');
-const { query } = require('../config/database');
+const { query, withTransaction } = require('../config/database');
 const logger = require('../utils/logger');
 
 async function createActivation(req, res, next) {
@@ -50,6 +50,26 @@ async function createActivation(req, res, next) {
         success: false,
         message: 'You already have an active activation for this number',
         activationId: existingActive.id,
+      });
+    }
+
+    // ── Cooldown check: reject if this number failed within the last 3 minutes ──
+    const COOLDOWN_MS = 3 * 60 * 1000;
+    const [cooldown] = await query(
+      `SELECT failed_at, fail_reason FROM number_cooldowns
+       WHERE user_id = ? AND phone_full = ?
+         AND failed_at > NOW() - INTERVAL '3 minutes'`,
+      [userId, phoneFull]
+    );
+    if (cooldown) {
+      const failedAt = new Date(cooldown.failed_at).getTime();
+      const remainingMs = Math.max(0, COOLDOWN_MS - (Date.now() - failedAt));
+      const remainingSec = Math.ceil(remainingMs / 1000);
+      return res.status(429).json({
+        success: false,
+        message: `This number is temporarily blocked. Please wait ${Math.ceil(remainingSec / 60)} minute(s) before trying again.`,
+        cooldown: true,
+        cooldown_remaining_seconds: remainingSec,
       });
     }
 
@@ -180,19 +200,40 @@ async function submitOtp(req, res, next) {
   const { otp } = req.body;
 
   try {
-    const [activation] = await query(
-      `SELECT * FROM activations WHERE id = ? AND user_id = ? FOR UPDATE`,
-      [id, userId]
-    );
+    // Bug-fix: use withTransaction so SELECT FOR UPDATE actually holds the lock
+    // for the duration of the check+update, preventing duplicate OTP submissions.
+    let activation;
+    await withTransaction(async (conn) => {
+      const [rows] = await conn.execute(
+        `SELECT * FROM activations WHERE id = $1 AND user_id = $2 FOR UPDATE`,
+        [id, userId]
+      );
+      activation = Array.isArray(rows) ? rows[0] : rows;
+
+      if (!activation) return; // handled after transaction
+
+      // OTP can only be submitted when registrationStatus = 2 (IN_PROGRESS)
+      if (activation.status !== 'in_progress') return; // handled after transaction
+      if (activation.otp_code) return;                  // handled after transaction
+
+      await conn.execute(
+        `UPDATE activations
+         SET otp_code = $1, otp_uploaded_at = NOW(), status = 'otp_uploaded', updated_at = NOW()
+         WHERE id = $2`,
+        [otp, id]
+      );
+    });
 
     if (!activation) {
       return res.status(404).json({ success: false, message: 'Activation not found' });
     }
 
-    if (!['pending', 'in_progress', 'awaiting_otp'].includes(activation.status)) {
+    if (activation.status !== 'in_progress') {
       return res.status(409).json({
         success: false,
-        message: `Cannot submit OTP — activation is ${activation.status}`,
+        message: activation.status === 'pending'
+          ? 'OTP cannot be submitted yet — waiting for the provider to confirm the number (status must be IN_PROGRESS).'
+          : `Cannot submit OTP — activation is ${activation.status}`,
       });
     }
 
@@ -203,23 +244,21 @@ async function submitOtp(req, res, next) {
       });
     }
 
-    let apiResponse;
+    // Upload to external provider
     try {
-      apiResponse = await uploadOtpForCountry(activation.phone_cc, activation.phone_local, otp);
+      await uploadOtpForCountry(activation.phone_cc, activation.phone_local, otp);
     } catch (apiErr) {
+      // Rollback the DB update by resetting status back to in_progress
+      await query(
+        `UPDATE activations SET otp_code = NULL, status = 'in_progress', updated_at = NOW() WHERE id = $1`,
+        [id]
+      );
       logger.error('OTP upload API failed', { activationId: id, error: apiErr.message });
       return res.status(502).json({
         success: false,
-        message: 'Failed to submit OTP. Please try again.',
+        message: 'Failed to submit OTP to the provider. Please try again.',
       });
     }
-
-    await query(
-      `UPDATE activations
-       SET otp_code = ?, otp_uploaded_at = NOW(), status = 'otp_uploaded', updated_at = NOW()
-       WHERE id = ?`,
-      [otp, id]
-    );
 
     // OTP submitted — cancel the 2-minute deletion deadline
     cancelOtpTimeout(Number(id));

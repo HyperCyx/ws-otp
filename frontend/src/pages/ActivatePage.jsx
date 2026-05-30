@@ -30,6 +30,7 @@ export default function ActivatePage() {
   const [submittingOtp, setSubmittingOtp] = useState(false);
   const [syncError, setSyncError] = useState('');
   const [wrongOtpError, setWrongOtpError] = useState(false);
+  const [cooldownSecs, setCooldownSecs] = useState(0); // seconds remaining on 3-min block
 
   function getStatusMessage(status, fallback = '') {
     const key = `status.msg.${status}`;
@@ -41,6 +42,13 @@ export default function ActivatePage() {
     api.get('/countries').then(({ data }) => setCountries(data.data || []));
   }, []);
 
+  // Cooldown countdown ticker
+  useEffect(() => {
+    if (cooldownSecs <= 0) return;
+    const id = setInterval(() => setCooldownSecs((s) => Math.max(0, s - 1)), 1000);
+    return () => clearInterval(id);
+  }, [cooldownSecs]);
+
   useEffect(() => {
     let mounted = true;
     async function restoreLatestActivation() {
@@ -48,11 +56,11 @@ export default function ActivatePage() {
         const { data } = await api.get('/activations?limit=1');
         const latest = Array.isArray(data?.data) ? data.data[0] : null;
         if (!mounted || !latest) return;
-        if (['pending', 'in_progress', 'otp_uploaded'].includes(latest.status)) {
+        if (['pending', 'in_progress', 'awaiting_otp', 'otp_uploaded'].includes(latest.status)) {
           setCurrentActivation({
             id: latest.id,
             phone: latest.phone_full,
-            payout: latest.payout_amount,
+            payout: parseFloat(latest.payout_amount).toFixed(4),
             status: latest.status,
             otp: latest.otp_code || '',
             message: latest.message || getStatusMessage(latest.status),
@@ -115,7 +123,7 @@ export default function ActivatePage() {
             ...prev,
             id: latest.id,
             phone: latest.phone_full,
-            payout: latest.payout_amount,
+            payout: parseFloat(latest.payout_amount).toFixed(4),
             status: latest.status,
             otp: latest.otp_code || prev?.otp || '',
             message: latest.message || getStatusMessage(latest.status, prev?.message),
@@ -132,7 +140,9 @@ export default function ActivatePage() {
       }
     }, 5000);
     return () => clearInterval(timer);
-  }, [currentActivation?.id, currentActivation?.status]);
+  // Bug-fix: depend only on id so the interval is NOT torn down and restarted
+  // on every status change. The terminal check inside the callback stops it when done.
+  }, [currentActivation?.id]);
 
   useEffect(() => {
     const raw = phone.replace(/^\+/, '');
@@ -150,6 +160,7 @@ export default function ActivatePage() {
   async function handleSubmitPhone(e) {
     e.preventDefault();
     if (!phone.trim()) return toast.error(t('activate.enterPhone'));
+    if (cooldownSecs > 0) return toast.error(`Please wait ${Math.ceil(cooldownSecs / 60)} minute(s) before resubmitting this number.`);
     setSubmitting(true);
     haptic?.('light');
     try {
@@ -157,15 +168,22 @@ export default function ActivatePage() {
       setCurrentActivation({
         id: data.data.id,
         phone: data.data.phone,
-        payout: data.data.payout,
+        payout: parseFloat(data.data.payout).toFixed(4),
         status: data.data.status || 'pending',
         otp: '',
         message: data.data.message || getStatusMessage(data.data.status || 'pending'),
       });
+      setCooldownSecs(0);
       toast.success(data.data.message || 'Number submitted! Waiting for OTP...');
       haptic?.('success');
     } catch (err) {
-      toast.error(err.response?.data?.message || 'Failed to submit number');
+      const errData = err.response?.data;
+      if (err.response?.status === 429 && errData?.cooldown) {
+        setCooldownSecs(errData.cooldown_remaining_seconds || 180);
+        toast.error(errData.message || 'This number is temporarily blocked. Please wait 3 minutes.');
+      } else {
+        toast.error(errData?.message || 'Failed to submit number');
+      }
     } finally { setSubmitting(false); }
   }
 
@@ -183,7 +201,8 @@ export default function ActivatePage() {
         otp,
         message: data.message || prev?.message || 'OTP submitted.',
       }));
-      setOtp(''); setPhone(''); setDetectedCountry(null);
+      setOtp('');
+      // Bug-fix: do NOT clear phone/detectedCountry here — only resetFlow() should do that
     } catch (err) {
       toast.error(err.response?.data?.message || 'Failed to submit OTP');
     } finally { setSubmittingOtp(false); }
@@ -209,17 +228,21 @@ export default function ActivatePage() {
     setPhone(''); setOtp('');
     setDetectedCountry(null);
     setWrongOtpError(false);
+    // do NOT reset cooldownSecs — the block follows the number, not the flow
   }
 
   const statusStep = STATUS_TO_STEP[currentActivation?.status] ?? 0;
   const isSuccess = currentActivation?.status === 'success';
   const isTerminal = ['success', 'failed', 'invalid', 'expired', 'deleted'].includes(currentActivation?.status);
   const isErrorTerminal = ['failed', 'invalid', 'expired'].includes(currentActivation?.status);
-  const canSubmitOtp = !isTerminal && (
-    ['in_progress', 'pending', 'awaiting_otp'].includes(currentActivation?.status) ||
-    (otp.length > 0 && !currentActivation?.otp)
-  );
+  // OTP input is only shown when the provider has confirmed IN_PROGRESS (registrationStatus = 2)
+  const canSubmitOtp = !isTerminal && currentActivation?.status === 'in_progress';
   const statusMessage = currentActivation?.message || getStatusMessage(currentActivation?.status);
+
+  // Format MM:SS countdown string
+  const cooldownDisplay = cooldownSecs > 0
+    ? `${String(Math.floor(cooldownSecs / 60)).padStart(2, '0')}:${String(cooldownSecs % 60).padStart(2, '0')}`
+    : null;
 
   const steps = [
     { label: t('activate.step.submitted'), desc: t('activate.step.submittedDesc') },
@@ -269,6 +292,25 @@ export default function ActivatePage() {
                 </div>
               </div>
             )}
+
+            {/* Cooldown banner — shown when this number was recently blocked */}
+            {cooldownDisplay && (
+              <div className="flex items-center gap-3 p-3 rounded-xl animate-slide-up"
+                style={{ background: 'var(--badge-danger-bg)', border: '1.5px solid var(--badge-danger-txt)' }}>
+                <span className="text-xl">⏳</span>
+                <div className="flex-1">
+                  <p className="text-sm font-semibold" style={{ color: 'var(--badge-danger-txt)' }}>
+                    Number temporarily blocked
+                  </p>
+                  <p className="text-xs" style={{ color: 'var(--text-muted)' }}>
+                    You can resubmit after{' '}
+                    <span className="font-bold tabular-nums" style={{ color: 'var(--badge-danger-txt)' }}>
+                      {cooldownDisplay}
+                    </span>
+                  </p>
+                </div>
+              </div>
+            )}
           </div>
 
           <button type="submit" className="btn-primary w-full py-4 text-base" disabled={submitting}>
@@ -301,54 +343,67 @@ export default function ActivatePage() {
         </form>
       ) : (
         <div className="space-y-4">
-          <div className="glass-card p-5">
-            <div className="flex items-center gap-3 mb-5">
-              <div className="w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0"
-                style={{ background: 'var(--accent-blue-soft)' }}>
-                <Smartphone size={20} style={{ color: 'var(--accent-blue)' }} />
+          {/* ── Step tracker — hidden entirely on success (success card replaces it) ── */}
+          {!isSuccess && (
+            <div className="glass-card p-5">
+              <div className="flex items-center gap-3 mb-5">
+                <div className="w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0"
+                  style={{ background: 'var(--accent-blue-soft)' }}>
+                  <Smartphone size={20} style={{ color: 'var(--accent-blue)' }} />
+                </div>
+                <div>
+                  <p className="font-semibold" style={{ color: 'var(--text-primary)' }}>{currentActivation.phone}</p>
+                  <p className="text-xs" style={{ color: 'var(--text-muted)' }}>
+                    {t('activate.payout')}{' '}
+                    <span className="font-bold" style={{ color: 'var(--accent-green)' }}>
+                      ${currentActivation.payout}
+                    </span>
+                  </p>
+                </div>
               </div>
-              <div>
-                <p className="font-semibold" style={{ color: 'var(--text-primary)' }}>{currentActivation.phone}</p>
-                <p className="text-xs" style={{ color: 'var(--text-muted)' }}>
-                  {t('activate.payout')}{' '}
-                  <span className="font-bold" style={{ color: 'var(--accent-green)' }}>
-                    ${currentActivation.payout}
-                  </span>
-                </p>
+
+              <div className="space-y-2">
+                {steps.map((step, idx) => {
+                  // On success all steps are done; never spin the last step
+                  const isDone = idx < statusStep;
+                  const isActive = !isSuccess && idx === statusStep;
+                  return (
+                    <div key={idx}
+                      className={`flex items-center gap-3 p-3 rounded-xl transition-all ${isActive ? '' : isDone ? '' : 'opacity-35'}`}
+                      style={isActive ? {
+                        background: 'var(--accent-blue-soft)',
+                        border: '1.5px solid var(--border-color)',
+                      } : isDone ? { background: 'var(--badge-success-bg)' } : {}}>
+                      <div className="w-7 h-7 rounded-full flex items-center justify-center flex-shrink-0"
+                        style={{
+                          background: isDone ? 'var(--badge-success-bg)' : isActive ? 'var(--accent-blue-soft)' : 'var(--bg-tertiary)',
+                        }}>
+                        {isDone
+                          ? <CheckCircle size={14} style={{ color: 'var(--accent-green)' }} />
+                          : isActive
+                            ? <Loader2 size={14} className="animate-spin" style={{ color: 'var(--accent-blue)' }} />
+                            : <span className="text-xs font-bold" style={{ color: 'var(--text-faint)' }}>{idx + 1}</span>}
+                      </div>
+                      <div>
+                        <p className="text-sm font-semibold" style={{ color: 'var(--text-primary)' }}>{step.label}</p>
+                        <p className="text-xs" style={{ color: 'var(--text-muted)' }}>{step.desc}</p>
+                      </div>
+                    </div>
+                  );
+                })}
               </div>
             </div>
-
-            <div className="space-y-2">
-              {steps.map((step, idx) => {
-                const isDone = idx < statusStep;
-                const isActive = idx === statusStep;
-                return (
-                  <div key={idx}
-                    className={`flex items-center gap-3 p-3 rounded-xl transition-all ${isActive ? '' : isDone ? '' : 'opacity-35'}`}
-                    style={isActive ? {
-                      background: 'var(--accent-blue-soft)',
-                      border: '1.5px solid var(--border-color)',
-                    } : isDone ? { background: 'var(--badge-success-bg)' } : {}}>
-                    <div className="w-7 h-7 rounded-full flex items-center justify-center flex-shrink-0"
-                      style={{
-                        background: isDone ? 'var(--badge-success-bg)' : isActive ? 'var(--accent-blue-soft)' : 'var(--bg-tertiary)',
-                      }}>
-                      {isDone
-                        ? <CheckCircle size={14} style={{ color: 'var(--accent-green)' }} />
-                        : isActive
-                          ? <Loader2 size={14} className="animate-spin" style={{ color: 'var(--accent-blue)' }} />
-                          : <span className="text-xs font-bold" style={{ color: 'var(--text-faint)' }}>{idx + 1}</span>}
-                    </div>
-                    <div>
-                      <p className="text-sm font-semibold" style={{ color: 'var(--text-primary)' }}>{step.label}</p>
-                      <p className="text-xs" style={{ color: 'var(--text-muted)' }}>{step.desc}</p>
-                    </div>
-                  </div>
-                );
-              })}
+          )}
+          {/* Sync error warning — shown when fallback poll fails temporarily */}
+          {syncError && (
+            <div className="flex items-center gap-2 px-3 py-2 rounded-xl animate-slide-up"
+              style={{ background: 'var(--badge-warn-bg)', border: '1px solid var(--badge-warn-txt)' }}>
+              <span className="text-sm">⚠️</span>
+              <p className="text-xs" style={{ color: 'var(--text-secondary)' }}>{syncError}</p>
             </div>
-          </div>
+          )}
 
+          {/* OTP input — only when provider has confirmed IN_PROGRESS (registrationStatus = 2) */}
           {canSubmitOtp && !isTerminal && (
             <form onSubmit={handleSubmitOtp} className="glass-card p-5 space-y-4 animate-slide-up">
               <div>
@@ -369,6 +424,40 @@ export default function ActivatePage() {
                 {submittingOtp ? t('activate.submittingOtp') : t('activate.submitOtp')}
               </button>
             </form>
+          )}
+
+          {/* OTP submitted — waiting for provider verification */}
+          {!isTerminal && currentActivation?.status === 'otp_uploaded' && (
+            <div className="glass-card p-4 animate-slide-up">
+              <div className="flex items-center gap-3">
+                <Loader2 size={16} className="animate-spin flex-shrink-0" style={{ color: 'var(--accent-blue)' }} />
+                <div>
+                  <p className="text-sm font-semibold" style={{ color: 'var(--text-primary)' }}>
+                    OTP submitted — verifying with provider
+                  </p>
+                  <p className="text-xs" style={{ color: 'var(--text-muted)' }}>
+                    Please wait while we confirm the code. This usually takes a few seconds.
+                  </p>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Pending state — waiting for provider to confirm IN_PROGRESS */}
+          {!isTerminal && currentActivation?.status === 'pending' && (
+            <div className="glass-card p-4 animate-slide-up">
+              <div className="flex items-center gap-3">
+                <Loader2 size={16} className="animate-spin flex-shrink-0" style={{ color: 'var(--accent-blue)' }} />
+                <div>
+                  <p className="text-sm font-semibold" style={{ color: 'var(--text-primary)' }}>
+                    Waiting for provider confirmation
+                  </p>
+                  <p className="text-xs" style={{ color: 'var(--text-muted)' }}>
+                    OTP entry will unlock once the network confirms this number is active.
+                  </p>
+                </div>
+              </div>
+            </div>
           )}
 
           {currentActivation && !isTerminal && !isSuccess && (

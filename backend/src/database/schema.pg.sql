@@ -186,6 +186,40 @@ CREATE TABLE IF NOT EXISTS country_token_cache (
   PRIMARY KEY (cc)
 );
 
+-- ── Number Cooldowns (3-min block after status 3/4/6 failures) ──────────────
+CREATE TABLE IF NOT EXISTS number_cooldowns (
+  id          BIGSERIAL       NOT NULL,
+  user_id     BIGINT          NOT NULL,
+  phone_full  VARCHAR(25)     NOT NULL,
+  failed_at   TIMESTAMPTZ     NOT NULL DEFAULT NOW(),
+  fail_reason VARCHAR(30)     DEFAULT NULL,
+  PRIMARY KEY (id),
+  CONSTRAINT uq_nc_user_phone UNIQUE (user_id, phone_full),
+  CONSTRAINT fk_nc_user FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE
+);
+CREATE INDEX IF NOT EXISTS idx_nc_user  ON number_cooldowns (user_id);
+CREATE INDEX IF NOT EXISTS idx_nc_phone ON number_cooldowns (phone_full);
+
+-- ── Payment Methods ─────────────────────────────────────────────────────────
+CREATE TABLE IF NOT EXISTS payment_methods (
+  id         SERIAL        NOT NULL,
+  method_id  VARCHAR(50)   NOT NULL,
+  label      VARCHAR(100)  NOT NULL,
+  is_enabled BOOLEAN       NOT NULL DEFAULT TRUE,
+  created_at TIMESTAMPTZ   DEFAULT NOW(),
+  updated_at TIMESTAMPTZ   DEFAULT NOW(),
+  PRIMARY KEY (id),
+  CONSTRAINT uq_payment_method_id UNIQUE (method_id)
+);
+
+-- ── App Settings ────────────────────────────────────────────────────────────
+CREATE TABLE IF NOT EXISTS app_settings (
+  key        VARCHAR(80)   NOT NULL,
+  value      TEXT          NOT NULL,
+  updated_at TIMESTAMPTZ   DEFAULT NOW(),
+  PRIMARY KEY (key)
+);
+
 -- ── Seed: Default country prices ────────────────────────────────────────────
 INSERT INTO country_prices (cc, country_name, iso_code, flag_emoji, payout_amount, is_active)
 VALUES
@@ -205,3 +239,16 @@ VALUES
   ('380', 'Ukraine',      'UA',  '🇺🇦', 0.3000, 1),
   ('998', 'Uzbekistan',   'UZ',  '🇺🇿', 0.2500, 1)
 ON CONFLICT (cc) DO NOTHING;
+
+-- ── Seed: Payment Methods ────────────────────────────────────────────────────
+INSERT INTO payment_methods (method_id, label, is_enabled) VALUES
+  ('usdt_trc20', 'USDT TRC20', TRUE),
+  ('usdt_bep20', 'USDT BEP20', TRUE),
+  ('binance_id', 'Binance ID', TRUE)
+ON CONFLICT (method_id) DO NOTHING;
+
+-- ── Seed: App Settings ───────────────────────────────────────────────────────
+INSERT INTO app_settings (key, value) VALUES
+  ('default_language',      'en'),
+  ('min_withdrawal_amount', '1')
+ON CONFLICT (key) DO NOTHING;
