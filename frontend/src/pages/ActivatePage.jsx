@@ -114,6 +114,10 @@ export default function ActivatePage() {
         toast.success(t('activate.successToast'));
       } else if (['failed', 'invalid', 'expired'].includes(payload.status)) {
         toast.error(payload.message || 'Activation ended');
+        // If the backend sent a cooldown flag, start the 3-minute countdown
+        if (payload.cooldown) {
+          setCooldownSecs((prev) => prev > 0 ? prev : 180);
+        }
       }
     });
     return stop;
@@ -538,9 +542,27 @@ export default function ActivatePage() {
                 <p className="text-5xl mb-3">⚠️</p>
                 <p className="font-bold text-lg" style={{ color: 'var(--badge-danger-txt)' }}>{t('activate.failedTitle')}</p>
                 <p className="text-sm mt-1" style={{ color: 'var(--text-muted)' }}>{statusMessage}</p>
+                {cooldownSecs > 0 && (
+                  <div className="mt-3 flex items-center justify-center gap-2">
+                    <span className="text-lg">⏳</span>
+                    <p className="text-sm font-semibold" style={{ color: 'var(--badge-danger-txt)' }}>
+                      Retry in{' '}
+                      <span className="font-bold tabular-nums">
+                        {String(Math.floor(cooldownSecs / 60)).padStart(2, '0')}:{String(cooldownSecs % 60).padStart(2, '0')}
+                      </span>
+                    </p>
+                  </div>
+                )}
               </div>
-              <button onClick={resetFlow} className="btn-secondary w-full py-3">
-                {t('activate.startNew')}
+              <button
+                onClick={resetFlow}
+                disabled={cooldownSecs > 0}
+                className="btn-secondary w-full py-3"
+                style={cooldownSecs > 0 ? { opacity: 0.5, cursor: 'not-allowed' } : {}}
+              >
+                {cooldownSecs > 0
+                  ? `Wait ${String(Math.floor(cooldownSecs / 60)).padStart(2, '0')}:${String(cooldownSecs % 60).padStart(2, '0')}`
+                  : t('activate.startNew')}
               </button>
             </div>
           )}
