@@ -179,15 +179,21 @@ async function processActivation(activationId) {
         }
 
         if (finalStatus === EXT_STATUS.IN_PROGRESS) {
-          // Same rule: keep in_progress, show hint if latestCode present
+          // Write in_progress to DB if needed, then emit so OTP input unlocks
           await scheduleNextPoll(activationId, POLL_INTERVAL_MS);
+          if (activation.status !== 'in_progress') {
+            await query(
+              `UPDATE activations SET status = 'in_progress', updated_at = NOW() WHERE id = ?`,
+              [activationId]
+            );
+          }
           await emitToUser(activation.user_id, 'activation:update', {
             id: activationId,
             status: 'in_progress',
             message: finalOtp
               ? `OTP hint: ${finalOtp} — please verify and submit the code.`
-              : 'Waiting for OTP — enter the code when you receive it.',
-            otp: finalOtp ? String(finalOtp) : undefined,
+              : 'Number confirmed! Please enter the OTP you received.',
+            ...(finalOtp ? { otp: String(finalOtp) } : {}),
           });
           return;
         }
@@ -273,19 +279,32 @@ async function processActivation(activationId) {
     if (extStatus === EXT_STATUS.SUCCESS) {
       await handleSuccess(activation);
     } else if (extStatus === EXT_STATUS.IN_PROGRESS) {
-      // Status 2: Keep in_progress. Only emit if there is a NEW hint code the
-      // user hasn't seen yet — otherwise poll silently to avoid disrupting typing.
+      // Status 2: Provider confirmed number is active. MUST write in_progress to DB
+      // so the frontend canSubmitOtp gate opens. This is the critical fix.
       await scheduleNextPoll(activationId, POLL_INTERVAL_MS);
+
+      const statusChanged = activation.status !== 'in_progress';
+      if (statusChanged) {
+        await query(
+          `UPDATE activations SET status = 'in_progress', updated_at = NOW() WHERE id = ?`,
+          [activationId]
+        );
+      }
+
       const newHint = hasOtp && String(possibleOtp) !== String(activation.otp_code || '');
-      if (newHint) {
+
+      // Emit when status just changed (unlocks OTP input box) OR when new OTP hint arrived
+      if (statusChanged || newHint) {
         await emitToUser(activation.user_id, 'activation:update', {
           id: activationId,
           status: 'in_progress',
-          message: `OTP hint: ${possibleOtp} — please verify and submit the code.`,
-          otp: String(possibleOtp),
+          message: newHint
+            ? `OTP hint: ${possibleOtp} — please verify and submit the code.`
+            : 'Number confirmed! Please enter the OTP you received.',
+          ...(newHint ? { otp: String(possibleOtp) } : {}),
         });
       }
-      // No emit when nothing changed — UI stays stable so user can type undisturbed
+      // If already in_progress and no new hint — poll silently, don’t disrupt typing
     } else if (extStatus === EXT_STATUS.RETRY_LATER) {
       // Status 4: Too Many Requests — delete number, mark failed, 3-min cooldown
       logger.warn('Polling: provider returned status 4 (too many requests) — deleting number and applying cooldown', { activationId });
