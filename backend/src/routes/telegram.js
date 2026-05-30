@@ -21,8 +21,8 @@ router.post('/webhook', async (req, res) => {
   if (chatId && payload !== null) {
     const firstName = update?.message?.from?.first_name || 'there';
     const welcomeText =
-      `Hi ${firstName}!\n\n` +
-      'Welcome to OTP Activations. Open the mini app to start earning.';
+      `👋 Привет! ${firstName}!\n\n` +
+      'Добро пожаловать в НомерМаркет! Откройте мини-приложение и начните зарабатывать уже сегодня. 💰🚀';
     await sendMessage(chatId, welcomeText);
   }
 
