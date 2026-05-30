@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
-import { FileText, Server } from 'lucide-react';
+import { FileText, Server, Trash2, Loader2, RefreshCw } from 'lucide-react';
+import toast from 'react-hot-toast';
 import api from '../../api/client';
 
 function LogEntry({ log, type }) {
@@ -74,9 +75,12 @@ export default function AdminLogs() {
   const [tab, setTab] = useState('api');
   const [logs, setLogs] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [clearing, setClearing] = useState(false);
+  const [confirmClear, setConfirmClear] = useState(false);
 
   async function load(t = tab) {
     setLoading(true);
+    setConfirmClear(false);
     try {
       const endpoint = t === 'api' ? '/admin/api-logs' : '/admin/admin-logs';
       const { data } = await api.get(`${endpoint}?limit=50`);
@@ -85,42 +89,121 @@ export default function AdminLogs() {
     finally { setLoading(false); }
   }
 
+  async function handleClear() {
+    setClearing(true);
+    try {
+      const endpoint = tab === 'api' ? '/admin/api-logs' : '/admin/admin-logs';
+      const { data } = await api.delete(endpoint);
+      toast.success(data?.message || 'Logs cleared');
+      setLogs([]);
+      setConfirmClear(false);
+    } catch (err) {
+      toast.error(err.response?.data?.message || 'Failed to clear logs');
+    } finally {
+      setClearing(false);
+    }
+  }
+
   useEffect(() => { load(tab); }, [tab]);
 
   return (
     <div className="space-y-4 animate-fade-in">
-      <h1 className="text-lg font-bold flex items-center gap-2" style={{ color: 'var(--text-primary)' }}>
-        <FileText size={18} style={{ color: 'var(--text-muted)' }} />
-        System Logs
-      </h1>
-
-      {/* Tabs */}
-      <div className="flex gap-2">
-        {[
-          { id: 'api',   label: 'API Logs',    Icon: Server },
-          { id: 'admin', label: 'Admin Audit', Icon: FileText },
-        ].map(({ id, label, Icon }) => (
-          <button key={id} onClick={() => setTab(id)}
-            className="flex items-center gap-1.5 py-1.5 px-3 rounded-lg text-xs font-semibold transition-all"
-            style={tab === id ? {
-              background: 'var(--badge-purple-bg)',
-              color: 'var(--badge-purple-txt)',
-              border: '1.5px solid var(--badge-purple-txt)',
-            } : {
-              background: 'var(--bg-tertiary)',
-              color: 'var(--text-faint)',
-              border: '1px solid var(--border-subtle)',
-            }}>
-            <Icon size={12} />
-            {label}
-          </button>
-        ))}
+      {/* Header */}
+      <div className="flex items-center justify-between">
+        <h1 className="text-lg font-bold flex items-center gap-2" style={{ color: 'var(--text-primary)' }}>
+          <FileText size={18} style={{ color: 'var(--text-muted)' }} />
+          System Logs
+        </h1>
+        <button
+          onClick={() => load(tab)}
+          className="flex items-center gap-1.5 py-1.5 px-3 rounded-lg text-xs font-semibold transition-all"
+          style={{ background: 'var(--bg-tertiary)', color: 'var(--text-muted)', border: '1px solid var(--border-subtle)' }}
+          title="Refresh"
+        >
+          <RefreshCw size={12} />
+          Refresh
+        </button>
       </div>
+
+      {/* Tabs + Clear button */}
+      <div className="flex items-center justify-between gap-2">
+        <div className="flex gap-2">
+          {[
+            { id: 'api',   label: 'API Logs',    Icon: Server },
+            { id: 'admin', label: 'Admin Audit', Icon: FileText },
+          ].map(({ id, label, Icon }) => (
+            <button key={id} onClick={() => { setTab(id); setConfirmClear(false); }}
+              className="flex items-center gap-1.5 py-1.5 px-3 rounded-lg text-xs font-semibold transition-all"
+              style={tab === id ? {
+                background: 'var(--badge-purple-bg)',
+                color: 'var(--badge-purple-txt)',
+                border: '1.5px solid var(--badge-purple-txt)',
+              } : {
+                background: 'var(--bg-tertiary)',
+                color: 'var(--text-faint)',
+                border: '1px solid var(--border-subtle)',
+              }}>
+              <Icon size={12} />
+              {label}
+            </button>
+          ))}
+        </div>
+
+        {/* Clear button / confirm */}
+        {!confirmClear ? (
+          <button
+            onClick={() => setConfirmClear(true)}
+            disabled={logs.length === 0 || loading}
+            className="flex items-center gap-1.5 py-1.5 px-3 rounded-lg text-xs font-semibold transition-all"
+            style={{
+              background: logs.length === 0 || loading ? 'var(--bg-tertiary)' : 'var(--badge-danger-bg)',
+              color: logs.length === 0 || loading ? 'var(--text-faint)' : 'var(--badge-danger-txt)',
+              border: `1px solid ${logs.length === 0 || loading ? 'var(--border-subtle)' : 'var(--badge-danger-txt)'}`,
+              opacity: logs.length === 0 || loading ? 0.5 : 1,
+              cursor: logs.length === 0 || loading ? 'not-allowed' : 'pointer',
+            }}
+          >
+            <Trash2 size={12} />
+            Clear Logs
+          </button>
+        ) : (
+          <div className="flex items-center gap-1.5 p-1.5 rounded-xl animate-slide-up"
+            style={{ background: 'var(--badge-danger-bg)', border: '1.5px solid var(--badge-danger-txt)' }}>
+            <span className="text-xs font-semibold px-1" style={{ color: 'var(--badge-danger-txt)' }}>
+              Delete all {tab === 'api' ? 'API' : 'Admin'} logs?
+            </span>
+            <button
+              onClick={handleClear}
+              disabled={clearing}
+              className="flex items-center gap-1 py-1 px-2.5 rounded-lg text-xs font-bold transition-all"
+              style={{ background: 'var(--badge-danger-txt)', color: '#fff' }}
+            >
+              {clearing ? <Loader2 size={10} className="animate-spin" /> : <Trash2 size={10} />}
+              {clearing ? 'Clearing…' : 'Yes, clear'}
+            </button>
+            <button
+              onClick={() => setConfirmClear(false)}
+              className="py-1 px-2 rounded-lg text-xs font-semibold"
+              style={{ background: 'var(--bg-tertiary)', color: 'var(--text-muted)' }}
+            >
+              Cancel
+            </button>
+          </div>
+        )}
+      </div>
+
+      {/* Log count */}
+      {!loading && logs.length > 0 && (
+        <p className="text-xs" style={{ color: 'var(--text-faint)' }}>
+          Showing {logs.length} most recent log{logs.length !== 1 ? 's' : ''}
+        </p>
+      )}
 
       {loading ? (
         <div className="space-y-2">{[1,2,3,4,5].map(i => <div key={i} className="skeleton h-14 rounded-xl" />)}</div>
       ) : logs.length === 0 ? (
         <div className="glass-card p-8 text-center">
+          <Trash2 size={28} className="mx-auto mb-2" style={{ color: 'var(--text-faint)' }} />
           <p style={{ color: 'var(--text-muted)' }}>No logs available</p>
         </div>
       ) : (

@@ -590,10 +590,31 @@ module.exports = {
   listPrices, updatePrice,
   getCountryCredentials, updateCountryCredentials, removeCountryCredentials,
   addCountry, deleteCountry,
-  getApiLogs, getAdminLogs,
+  getApiLogs, getAdminLogs, clearApiLogs, clearAdminLogs,
   listPaymentMethods, togglePaymentMethod,
   getSettings, updateSetting,
 };
+
+async function clearApiLogs(req, res, next) {
+  const adminId = req.user.id;
+  try {
+    const [countRow] = await query('SELECT COUNT(*) as total FROM api_logs');
+    await query('DELETE FROM api_logs');
+    await logAdminAction(adminId, 'clear_api_logs', 'api_logs', null, { deleted: countRow.total }, req.ip);
+    res.json({ success: true, message: `Cleared ${countRow.total} API log(s)` });
+  } catch (err) { next(err); }
+}
+
+async function clearAdminLogs(req, res, next) {
+  const adminId = req.user.id;
+  try {
+    const [countRow] = await query('SELECT COUNT(*) as total FROM admin_logs');
+    await query('DELETE FROM admin_logs');
+    // Re-insert a single log entry so the action itself is recorded
+    await logAdminAction(adminId, 'clear_admin_logs', 'admin_logs', null, { deleted: countRow.total }, req.ip);
+    res.json({ success: true, message: `Cleared ${countRow.total} admin log(s)` });
+  } catch (err) { next(err); }
+}
 
 async function listPaymentMethods(req, res, next) {
   try {

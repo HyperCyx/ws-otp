@@ -54,6 +54,8 @@ router.patch('/payment-methods/:methodId', adminController.togglePaymentMethod);
 
 // ── Logs ───────────────────────────────────────────────────────────────────
 router.get('/api-logs', adminController.getApiLogs);
+router.delete('/api-logs', adminController.clearApiLogs);
 router.get('/admin-logs', adminController.getAdminLogs);
+router.delete('/admin-logs', adminController.clearAdminLogs);
 
 module.exports = router;
