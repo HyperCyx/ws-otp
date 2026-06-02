@@ -7,6 +7,11 @@ import './index.css';
 const savedTheme = localStorage.getItem('otp-theme') || 'light';
 document.documentElement.setAttribute('data-theme', savedTheme);
 
+// ── Block standard context menu popup globally to prevent showing URLs ────
+document.addEventListener('contextmenu', (e) => {
+  e.preventDefault();
+}, { capture: true });
+
 ReactDOM.createRoot(document.getElementById('root')).render(
   <React.StrictMode>
     <App />
