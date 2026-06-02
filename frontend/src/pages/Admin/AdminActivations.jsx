@@ -224,9 +224,9 @@ export default function AdminActivations() {
 
       {(pagination.pages || 1) > 1 && (
         <div className="flex justify-center items-center gap-3">
-          <button onClick={() => { setPage(p=>p-1); load(page-1,filter); }} disabled={page===1} className="btn-secondary py-1 px-3 text-xs">← Prev</button>
+          <button onClick={() => { const p = page - 1; setPage(p); load(p, filter); }} disabled={page===1} className="btn-secondary py-1 px-3 text-xs">← Prev</button>
           <span className="text-xs" style={{ color: 'var(--text-muted)' }}>{page} / {pagination.pages}</span>
-          <button onClick={() => { setPage(p=>p+1); load(page+1,filter); }} disabled={page===pagination.pages} className="btn-secondary py-1 px-3 text-xs">Next →</button>
+          <button onClick={() => { const p = page + 1; setPage(p); load(p, filter); }} disabled={page===pagination.pages} className="btn-secondary py-1 px-3 text-xs">Next →</button>
         </div>
       )}
     </div>

@@ -23,6 +23,7 @@ export default function AdminWithdrawals() {
 
   async function load(f = filter) {
     setLoading(true);
+    setWithdrawals([]); // clear stale entries immediately
     try {
       const { data } = await api.get(`/admin/withdrawals?status=${f}&limit=50`);
       setWithdrawals(Array.isArray(data?.data) ? data.data : []);

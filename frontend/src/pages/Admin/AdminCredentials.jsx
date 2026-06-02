@@ -39,7 +39,7 @@ function AddCountryForm({ onAdded }) {
     payout_amount: '', api_account: '', api_password: '', api_identity: 'Member',
   });
 
-  function set(key, val) { setForm((f) => ({ ...f, [key]: val })); }
+  function setField(key, val) { setForm((f) => ({ ...f, [key]: val })); }
 
   async function submit() {
     if (!form.cc || !form.country_name || !form.iso_code || !form.api_account || !form.api_password) {
@@ -89,30 +89,30 @@ function AddCountryForm({ onAdded }) {
             <div>
               <label className="text-xs font-semibold mb-1 block" style={{ color: 'var(--text-muted)' }}>Country Code *</label>
               <input className="form-input w-full text-sm" placeholder="e.g. 7" value={form.cc}
-                onChange={(e) => set('cc', e.target.value)} />
+                onChange={(e) => setField('cc', e.target.value)} />
             </div>
             <div>
               <label className="text-xs font-semibold mb-1 block" style={{ color: 'var(--text-muted)' }}>ISO Code *</label>
               <input className="form-input w-full text-sm" placeholder="e.g. RU" value={form.iso_code}
-                onChange={(e) => set('iso_code', e.target.value)} />
+                onChange={(e) => setField('iso_code', e.target.value)} />
             </div>
           </div>
           <div className="grid grid-cols-2 gap-3">
             <div>
               <label className="text-xs font-semibold mb-1 block" style={{ color: 'var(--text-muted)' }}>Country Name *</label>
               <input className="form-input w-full text-sm" placeholder="e.g. Russia" value={form.country_name}
-                onChange={(e) => set('country_name', e.target.value)} />
+                onChange={(e) => setField('country_name', e.target.value)} />
             </div>
             <div>
               <label className="text-xs font-semibold mb-1 block" style={{ color: 'var(--text-muted)' }}>Flag Emoji</label>
               <input className="form-input w-full text-sm" placeholder="🇷🇺" value={form.flag_emoji}
-                onChange={(e) => set('flag_emoji', e.target.value)} />
+                onChange={(e) => setField('flag_emoji', e.target.value)} />
             </div>
           </div>
           <div>
             <label className="text-xs font-semibold mb-1 block" style={{ color: 'var(--text-muted)' }}>Payout Amount ($)</label>
             <input type="number" step="0.01" min="0" className="form-input w-full text-sm" placeholder="0.30"
-              value={form.payout_amount} onChange={(e) => set('payout_amount', e.target.value)} />
+              value={form.payout_amount} onChange={(e) => setField('payout_amount', e.target.value)} />
           </div>
           <div className="border-t pt-3" style={{ borderColor: 'var(--border-subtle)' }}>
             <p className="text-xs font-bold mb-2" style={{ color: 'var(--accent-purple)' }}>API Credentials</p>
@@ -120,14 +120,14 @@ function AddCountryForm({ onAdded }) {
               <div>
                 <label className="text-xs font-semibold mb-1 block" style={{ color: 'var(--text-muted)' }}>Username *</label>
                 <input className="form-input w-full text-sm" placeholder="e.g. RU_USER" value={form.api_account}
-                  onChange={(e) => set('api_account', e.target.value)} />
+                  onChange={(e) => setField('api_account', e.target.value)} />
               </div>
               <div>
                 <label className="text-xs font-semibold mb-1 block" style={{ color: 'var(--text-muted)' }}>Password *</label>
                 <div className="relative">
                   <input type={showPass ? 'text' : 'password'} className="form-input w-full text-sm pr-10"
                     placeholder="Enter password" value={form.api_password}
-                    onChange={(e) => set('api_password', e.target.value)} />
+                    onChange={(e) => setField('api_password', e.target.value)} />
                   <button type="button" onClick={() => setShowPass((v) => !v)}
                     className="absolute right-3 top-1/2 -translate-y-1/2"
                     style={{ color: 'var(--text-faint)' }}>
@@ -138,7 +138,7 @@ function AddCountryForm({ onAdded }) {
               <div>
                 <label className="text-xs font-semibold mb-1 block" style={{ color: 'var(--text-muted)' }}>Identity</label>
                 <input className="form-input w-full text-sm" placeholder="Member" value={form.api_identity}
-                  onChange={(e) => set('api_identity', e.target.value)} />
+                  onChange={(e) => setField('api_identity', e.target.value)} />
               </div>
             </div>
           </div>

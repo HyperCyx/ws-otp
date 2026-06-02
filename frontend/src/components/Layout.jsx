@@ -9,11 +9,10 @@ import { useLang } from '../context/LangContext';
 export default function Layout() {
   const { user } = useAuthStore();
   const { fetchWallet } = useWalletStore();
-  const { theme, toggleTheme, initTheme } = useThemeStore();
+  const { theme, toggleTheme } = useThemeStore();
   const { t, lang, setLang } = useLang();
 
   useEffect(() => {
-    initTheme();
     fetchWallet();
   }, []);
 

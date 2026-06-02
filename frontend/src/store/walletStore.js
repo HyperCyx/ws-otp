@@ -12,12 +12,13 @@ export const useWalletStore = create((set) => ({
     set({ isLoading: true });
     try {
       const { data } = await api.get('/wallet');
-      const w = data.data;
+      const w = data?.data;
+      if (!w) return; // API returned unexpected shape — keep existing state
       set({
-        balance: w.balance,
-        lockedBalance: w.locked_balance,
-        totalEarned: w.total_earned,
-        totalWithdrawn: w.total_withdrawn,
+        balance: w.balance ?? '0.0000',
+        lockedBalance: w.locked_balance ?? '0.0000',
+        totalEarned: w.total_earned ?? '0.0000',
+        totalWithdrawn: w.total_withdrawn ?? '0.0000',
         isLoading: false,
       });
     } catch {

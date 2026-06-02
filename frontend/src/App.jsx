@@ -22,6 +22,10 @@ import AdminLogs from './pages/Admin/AdminLogs';
 import AdminSettings from './pages/Admin/AdminSettings';
 import LoadingScreen from './components/LoadingScreen';
 
+/**
+ * Route guard — only rendered after bootDone is true, so the persisted
+ * auth state is always available when this guard evaluates.
+ */
 function ProtectedAdmin({ children }) {
   const user = useAuthStore((s) => s.user);
   const isAuthenticated = useAuthStore((s) => s.isAuthenticated);
@@ -59,8 +63,8 @@ function AppInner() {
 }
 
 export default function App() {
-  const { login, isAuthenticated, isLoading } = useAuthStore();
   const { initTheme } = useThemeStore();
+  const isLoading = useAuthStore((s) => s.isLoading);
   const [bootDone, setBootDone] = useState(false);
   const [notInTelegram, setNotInTelegram] = useState(false);
 
@@ -86,15 +90,22 @@ export default function App() {
         return;
       }
 
+      // Always read the store state via getState() to avoid stale closure.
+      // Zustand persist hydrates synchronously before first render, so on a
+      // hard refresh the stored token/user is already in the store here.
+      const { isAuthenticated, login } = useAuthStore.getState();
       if (!isAuthenticated) {
         try { await login(initData); } catch (err) { console.warn('Boot error', err); }
       }
+
       setBootDone(true);
     }
 
     boot();
-  }, []);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // Block ALL route rendering until boot completes.
+  // ProtectedAdmin is never evaluated with an empty store.
   if (!bootDone || isLoading) return <LoadingScreen />;
   if (notInTelegram) return <NotInTelegram />;
 
