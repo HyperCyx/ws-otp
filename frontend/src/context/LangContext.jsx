@@ -21,7 +21,8 @@ export function LangProvider({ children }) {
           setMinWithdrawal(parseFloat(s.min_withdrawal_amount));
         }
         if (s.startup_message !== undefined) {
-          setStartupMessage(s.startup_message || '');
+          const enabled = s.startup_message_enabled !== '0';
+          setStartupMessage(enabled ? (s.startup_message || '') : '');
         }
       })
       .catch(() => {})

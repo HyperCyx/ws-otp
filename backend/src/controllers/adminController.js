@@ -585,7 +585,7 @@ async function getAdminLogs(req, res, next) {
 module.exports = {
   getDashboardStats, getRevenueChart,
   listUsers, getUser, toggleBan, adjustBalance,
-  listActivations, getActivation, deleteActivation,
+  listActivations, getActivation, deleteActivation, bulkDeleteActivations,
   listWithdrawals, reviewWithdrawal,
   listPrices, updatePrice,
   getCountryCredentials, updateCountryCredentials, removeCountryCredentials,
@@ -594,6 +594,95 @@ module.exports = {
   listPaymentMethods, togglePaymentMethod,
   getSettings, updateSetting, sendBroadcast,
 };
+
+async function bulkDeleteActivations(req, res, next) {
+  const adminId = req.user.id;
+  const { ids } = req.body;
+
+  if (!Array.isArray(ids) || ids.length === 0) {
+    return res.status(400).json({ success: false, message: 'ids must be a non-empty array' });
+  }
+
+  // Validate all entries are positive integers
+  const parsed = ids.map((id) => parseInt(id, 10));
+  if (parsed.some((id) => !Number.isInteger(id) || id < 1)) {
+    return res.status(400).json({ success: false, message: 'All ids must be positive integers' });
+  }
+
+  // Deduplicate
+  const uniqueIds = [...new Set(parsed)];
+
+  try {
+    // Fetch all requested activations in one query
+    const placeholders = uniqueIds.map(() => '?').join(',');
+    const rows = await query(
+      `SELECT id, user_id, phone_full, phone_cc, phone_local, status FROM activations WHERE id IN (${placeholders})`,
+      uniqueIds
+    );
+
+    if (rows.length === 0) {
+      return res.status(404).json({ success: false, message: 'No activations found for the given ids' });
+    }
+
+    // Separate processed (skip) vs deletable
+    const skipped = rows.filter((r) => ['success', 'otp_uploaded'].includes(r.status));
+    const deletable = rows.filter((r) => !['success', 'otp_uploaded'].includes(r.status));
+
+    if (deletable.length === 0) {
+      return res.status(409).json({
+        success: false,
+        message: `All selected activations have already been processed (${skipped.length} skipped). Cannot delete.`,
+      });
+    }
+
+    // Call external API delete for non-terminal active statuses
+    const activeStatuses = ['pending', 'in_progress'];
+    await Promise.allSettled(
+      deletable
+        .filter((r) => activeStatuses.includes(r.status))
+        .map(async (r) => {
+          try {
+            await deleteNumberForCountry(r.phone_cc, r.phone_local);
+          } catch (apiErr) {
+            logger.warn('External delete failed during bulk admin delete (continuing)', {
+              activationId: r.id,
+              error: apiErr.message,
+            });
+          }
+        })
+    );
+
+    const deletableIds = deletable.map((r) => r.id);
+    const delPlaceholders = deletableIds.map(() => '?').join(',');
+    await query(`DELETE FROM activations WHERE id IN (${delPlaceholders})`, deletableIds);
+
+    // Notify each affected user's live session
+    const { emitToUser } = require('../services/socketService');
+    await Promise.allSettled(
+      deletable.map((r) =>
+        emitToUser(r.user_id, 'activation:update', {
+          id: r.id,
+          status: 'deleted',
+          message: 'Your activation was removed by the admin.',
+        })
+      )
+    );
+
+    await logAdminAction(adminId, 'bulk_delete_activations', 'activation', null, {
+      requested_ids: uniqueIds,
+      deleted_ids: deletableIds,
+      skipped_ids: skipped.map((r) => r.id),
+    }, req.ip);
+
+    res.json({
+      success: true,
+      message: `Deleted ${deletableIds.length} activation(s)${skipped.length ? `. Skipped ${skipped.length} already-processed.` : '.'}`,
+      data: { deleted: deletableIds.length, skipped: skipped.length },
+    });
+  } catch (err) {
+    next(err);
+  }
+}
 
 async function clearApiLogs(req, res, next) {
   const adminId = req.user.id;
@@ -633,7 +722,7 @@ async function getSettings(req, res, next) {
 async function updateSetting(req, res, next) {
   const { key } = req.params;
   const { value } = req.body;
-  const allowed = ['default_language', 'min_withdrawal_amount', 'startup_message', 'bot_welcome_message'];
+  const allowed = ['default_language', 'min_withdrawal_amount', 'startup_message', 'bot_welcome_message', 'startup_message_enabled'];
   if (!allowed.includes(key)) {
     return res.status(400).json({ success: false, message: 'Unknown setting key' });
   }
@@ -645,6 +734,9 @@ async function updateSetting(req, res, next) {
   }
   if (key === 'min_withdrawal_amount' && (isNaN(parseFloat(value)) || parseFloat(value) < 0.01)) {
     return res.status(400).json({ success: false, message: 'min_withdrawal_amount must be >= 0.01' });
+  }
+  if (key === 'startup_message_enabled' && !['0', '1'].includes(String(value))) {
+    return res.status(400).json({ success: false, message: 'startup_message_enabled must be 0 or 1' });
   }
   try {
     await query(

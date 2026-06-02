@@ -25,6 +25,7 @@ router.post('/users/:userId/balance', validateAdminBalanceAdjust, adminControlle
 // ── Activation Management ──────────────────────────────────────────────────
 router.get('/activations', adminController.listActivations);
 router.get('/activations/:id', adminController.getActivation);
+router.delete('/activations', adminController.bulkDeleteActivations);   // bulk — must be before /:id
 router.delete('/activations/:id', adminController.deleteActivation);
 
 // ── Withdrawal Management ──────────────────────────────────────────────────

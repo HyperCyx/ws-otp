@@ -11,6 +11,7 @@ export default function AdminSettings() {
     min_withdrawal_amount: '1',
     startup_message: '',
     bot_welcome_message: '',
+    startup_message_enabled: '1',
   });
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState({});
@@ -104,6 +105,13 @@ export default function AdminSettings() {
         placeholder="e.g. 📢 Big updates today! Check prices..."
       />
 
+      {/* ── Announcement Toggle ── */}
+      <AnnouncementToggleCard
+        enabled={settings.startup_message_enabled !== '0'}
+        saving={!!saving['startup_message_enabled']}
+        onToggle={(val) => saveSetting('startup_message_enabled', val ? '1' : '0')}
+      />
+
       {/* ── Bot Startup Welcome Message ── */}
       <TextSettingCard
         title="Telegram Bot Welcome Message"
@@ -162,6 +170,88 @@ function MinAmountCard({ value, saving, onSave }) {
       <p className="text-xs font-medium" style={{ color: 'var(--text-faint)' }}>
         Current minimum: <span style={{ color: 'var(--accent-green)' }}>${parseFloat(value).toFixed(2)}</span>
       </p>
+    </div>
+  );
+}
+
+function AnnouncementToggleCard({ enabled, saving, onToggle }) {
+  return (
+    <div className="glass-card p-5" style={{ borderColor: enabled ? 'rgba(34,197,94,0.35)' : 'var(--border-subtle)' }}>
+      <div className="flex items-center justify-between gap-4">
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-2 mb-1">
+            <Bell size={16} style={{ color: enabled ? 'var(--accent-green)' : 'var(--text-muted)' }} />
+            <p className="font-semibold text-sm" style={{ color: 'var(--text-primary)' }}>
+              Announcement Banner
+            </p>
+            <span
+              className="text-[10px] font-bold px-2 py-0.5 rounded-full ml-1"
+              style={{
+                background: enabled ? 'var(--badge-success-bg)' : 'var(--bg-tertiary)',
+                color: enabled ? 'var(--badge-success-txt)' : 'var(--text-faint)',
+                border: `1px solid ${enabled ? 'var(--accent-green)' : 'var(--border-subtle)'}`,
+                transition: 'all 0.25s',
+              }}
+            >
+              {enabled ? 'ON' : 'OFF'}
+            </span>
+          </div>
+          <p className="text-xs" style={{ color: 'var(--text-muted)' }}>
+            {enabled
+              ? 'The announcement banner is visible to all users on the homepage.'
+              : 'The banner is hidden from users. Text is preserved for when you re-enable it.'}
+          </p>
+        </div>
+
+        {/* Pill toggle */}
+        <button
+          type="button"
+          onClick={() => !saving && onToggle(!enabled)}
+          disabled={saving}
+          aria-pressed={enabled}
+          aria-label="Toggle announcement banner"
+          style={{
+            width: 52,
+            height: 28,
+            borderRadius: 999,
+            background: enabled ? 'var(--accent-green)' : 'var(--bg-tertiary)',
+            border: `2px solid ${enabled ? 'var(--accent-green)' : 'var(--border-subtle)'}`,
+            position: 'relative',
+            cursor: saving ? 'not-allowed' : 'pointer',
+            transition: 'background 0.25s, border-color 0.25s',
+            opacity: saving ? 0.6 : 1,
+            flexShrink: 0,
+          }}
+        >
+          {saving ? (
+            <Loader2
+              size={14}
+              className="animate-spin"
+              style={{
+                position: 'absolute',
+                top: '50%',
+                left: '50%',
+                transform: 'translate(-50%, -50%)',
+                color: enabled ? '#fff' : 'var(--text-muted)',
+              }}
+            />
+          ) : (
+            <span
+              style={{
+                position: 'absolute',
+                top: 3,
+                left: enabled ? 26 : 3,
+                width: 18,
+                height: 18,
+                borderRadius: '50%',
+                background: '#fff',
+                boxShadow: '0 1px 4px rgba(0,0,0,0.25)',
+                transition: 'left 0.22s cubic-bezier(.4,0,.2,1)',
+              }}
+            />
+          )}
+        </button>
+      </div>
     </div>
   );
 }

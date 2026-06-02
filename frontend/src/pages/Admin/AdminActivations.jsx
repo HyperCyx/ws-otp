@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { CheckCircle, XCircle, Loader2, AlertCircle, Eye, Trash2, X } from 'lucide-react';
+import { Loader2, AlertCircle, Eye, Trash2, X, CheckSquare, Square } from 'lucide-react';
 import toast from 'react-hot-toast';
 import api from '../../api/client';
 
@@ -23,9 +23,13 @@ export default function AdminActivations() {
   const [pagination, setPagination] = useState({});
   const [selected, setSelected] = useState(null);
   const [deletingId, setDeletingId] = useState(null);
-  // Inline confirm state — avoids window.confirm() which exposes page URL in
-  // the native browser dialog title bar on some Android Telegram WebViews.
-  const [pendingDelete, setPendingDelete] = useState(null); // act to delete, or null
+  const [pendingDelete, setPendingDelete] = useState(null);
+
+  // ── Bulk select state ──────────────────────────────────────────────────────
+  const [selectMode, setSelectMode] = useState(false);
+  const [selectedIds, setSelectedIds] = useState(new Set());
+  const [bulkDeleting, setBulkDeleting] = useState(false);
+  const [bulkConfirm, setBulkConfirm] = useState(false);
 
   async function load(p = 1, f = filter) {
     setLoading(true);
@@ -44,13 +48,9 @@ export default function AdminActivations() {
 
   useEffect(() => { setPage(1); load(1, filter); }, [filter]);
 
+  // ── Single delete ──────────────────────────────────────────────────────────
   async function removeActivation(act) {
-    // First press: sets pending state (shows inline confirm UI)
-    if (pendingDelete?.id !== act.id) {
-      setPendingDelete(act);
-      return;
-    }
-    // Second press (confirmed): execute delete
+    if (pendingDelete?.id !== act.id) { setPendingDelete(act); return; }
     setPendingDelete(null);
     setDeletingId(act.id);
     try {
@@ -60,20 +60,86 @@ export default function AdminActivations() {
       load(page, filter);
     } catch (err) {
       toast.error(err.response?.data?.message || 'Failed to delete activation');
-    } finally {
-      setDeletingId(null);
-    }
+    } finally { setDeletingId(null); }
   }
 
-  function openDetails(act) {
-    setSelected(act);
+  function openDetails(act) { setSelected(act); }
+
+  // ── Select mode helpers ────────────────────────────────────────────────────
+  function toggleId(id) {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      next.has(id) ? next.delete(id) : next.add(id);
+      return next;
+    });
+  }
+
+  function selectAll() { setSelectedIds(new Set(activations.map((a) => a.id))); }
+  function deselectAll() { setSelectedIds(new Set()); }
+
+  function exitSelectMode() {
+    setSelectMode(false);
+    setSelectedIds(new Set());
+    setBulkConfirm(false);
+  }
+
+  // ── Bulk delete (two-step) ─────────────────────────────────────────────────
+  async function handleBulkDelete() {
+    if (!bulkConfirm) { setBulkConfirm(true); return; }
+    setBulkConfirm(false);
+    setBulkDeleting(true);
+    try {
+      const { data } = await api.delete('/admin/activations', { data: { ids: [...selectedIds] } });
+      toast.success(data.message || `Deleted ${data.data?.deleted} activation(s)`);
+      exitSelectMode();
+      load(page, filter);
+    } catch (err) {
+      toast.error(err.response?.data?.message || 'Bulk delete failed');
+    } finally { setBulkDeleting(false); }
   }
 
   return (
-    <div className="space-y-4 animate-fade-in">
-      <div className="flex items-center justify-between">
-        <h1 className="text-lg font-bold" style={{ color: 'var(--text-primary)' }}>Activations</h1>
-        <span className="badge-info">{pagination.total ?? 0}</span>
+    <div className="space-y-4 animate-fade-in" style={{ paddingBottom: selectedIds.size > 0 ? 88 : 0 }}>
+
+      {/* ── Header ── */}
+      <div className="flex items-center justify-between gap-2">
+        <div className="flex items-center gap-2">
+          <h1 className="text-lg font-bold" style={{ color: 'var(--text-primary)' }}>Activations</h1>
+          <span className="badge-info">{pagination.total ?? 0}</span>
+        </div>
+
+        {selectMode ? (
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={selectedIds.size === activations.length ? deselectAll : selectAll}
+              className="text-xs px-2.5 py-1.5 rounded-lg font-semibold flex items-center gap-1.5"
+              style={{ background: 'var(--bg-tertiary)', color: 'var(--text-muted)', border: '1px solid var(--border-subtle)' }}
+            >
+              {selectedIds.size === activations.length
+                ? <><Square size={12} /> Deselect All</>
+                : <><CheckSquare size={12} /> Select All</>}
+            </button>
+            <button
+              type="button"
+              onClick={exitSelectMode}
+              className="w-8 h-8 rounded-lg flex items-center justify-center"
+              style={{ background: 'var(--bg-tertiary)', border: '1px solid var(--border-subtle)', color: 'var(--text-muted)' }}
+              title="Exit select mode"
+            >
+              <X size={14} />
+            </button>
+          </div>
+        ) : (
+          <button
+            type="button"
+            onClick={() => setSelectMode(true)}
+            className="text-xs px-3 py-1.5 rounded-lg font-semibold flex items-center gap-1.5"
+            style={{ background: 'var(--bg-tertiary)', color: 'var(--text-muted)', border: '1px solid var(--border-subtle)' }}
+          >
+            <CheckSquare size={12} /> Select
+          </button>
+        )}
       </div>
 
       {/* Filters */}
@@ -105,10 +171,37 @@ export default function AdminActivations() {
         <div className="space-y-2">
           {activations.map((act, idx) => {
             const cfg = STATUS_CFG[act.status] || STATUS_CFG.pending;
+            const isChecked = selectedIds.has(act.id);
+
             return (
-              <div key={act.id ?? idx} className="glass-card p-4">
+              <div
+                key={act.id ?? idx}
+                className="glass-card p-4 transition-all"
+                onClick={selectMode ? () => toggleId(act.id) : undefined}
+                style={{
+                  cursor: selectMode ? 'pointer' : 'default',
+                  border: isChecked ? '1.5px solid var(--accent-blue)' : undefined,
+                  background: isChecked ? 'var(--accent-blue-soft)' : undefined,
+                }}
+              >
                 <div className="flex items-start justify-between gap-2">
-                  <div className="min-w-0">
+
+                  {/* Checkbox (select mode) */}
+                  {selectMode && (
+                    <div className="flex-shrink-0 pt-0.5">
+                      <div
+                        className="w-5 h-5 rounded-md flex items-center justify-center transition-all"
+                        style={{
+                          background: isChecked ? 'var(--accent-blue)' : 'var(--bg-tertiary)',
+                          border: `2px solid ${isChecked ? 'var(--accent-blue)' : 'var(--border-subtle)'}`,
+                        }}
+                      >
+                        {isChecked && <span style={{ color: '#fff', fontSize: 11, lineHeight: 1 }}>✓</span>}
+                      </div>
+                    </div>
+                  )}
+
+                  <div className="min-w-0 flex-1">
                     <div className="flex items-center gap-2 mb-0.5">
                       <div className="w-1.5 h-1.5 rounded-full flex-shrink-0"
                         style={{
@@ -132,6 +225,7 @@ export default function AdminActivations() {
                       </p>
                     )}
                   </div>
+
                   <div className="text-right flex-shrink-0 space-y-2">
                     <span className={cfg.badge}>
                       {cfg.spin && <Loader2 size={9} className="animate-spin inline mr-1" />}
@@ -143,46 +237,49 @@ export default function AdminActivations() {
                       </p>
                     )}
                     <p className="text-xs mt-1" style={{ color: 'var(--text-faint)' }}>#{act.id}</p>
-                    <div className="flex items-center justify-end gap-2 pt-1">
-                      <button
-                        type="button"
-                        onClick={() => openDetails(act)}
-                        className="w-8 h-8 rounded-lg flex items-center justify-center transition-all hover:scale-105"
-                        style={{ background: 'var(--bg-tertiary)', border: '1px solid var(--border-subtle)', color: 'var(--text-muted)' }}
-                        title="View details"
-                      >
-                        <Eye size={14} />
-                      </button>
-                      {/* Two-step inline delete: first tap = confirm prompt, second = delete.
-                          No window.confirm() = no native dialog = no URL shown. */}
-                      {pendingDelete?.id === act.id ? (
-                        <>
-                          <button
-                            type="button"
-                            onClick={() => setPendingDelete(null)}
-                            className="text-xs px-2 py-1 rounded-lg"
-                            style={{ background: 'var(--bg-tertiary)', color: 'var(--text-muted)', border: '1px solid var(--border-subtle)' }}
-                          >✕</button>
+
+                    {/* Action buttons — hidden in select mode */}
+                    {!selectMode && (
+                      <div className="flex items-center justify-end gap-2 pt-1">
+                        <button
+                          type="button"
+                          onClick={() => openDetails(act)}
+                          className="w-8 h-8 rounded-lg flex items-center justify-center transition-all hover:scale-105"
+                          style={{ background: 'var(--bg-tertiary)', border: '1px solid var(--border-subtle)', color: 'var(--text-muted)' }}
+                          title="View details"
+                        >
+                          <Eye size={14} />
+                        </button>
+                        {/* Two-step inline delete: first tap = confirm prompt, second = delete. */}
+                        {pendingDelete?.id === act.id ? (
+                          <>
+                            <button
+                              type="button"
+                              onClick={() => setPendingDelete(null)}
+                              className="text-xs px-2 py-1 rounded-lg"
+                              style={{ background: 'var(--bg-tertiary)', color: 'var(--text-muted)', border: '1px solid var(--border-subtle)' }}
+                            >✕</button>
+                            <button
+                              type="button"
+                              onClick={() => removeActivation(act)}
+                              className="text-xs px-2 py-1 rounded-lg font-semibold"
+                              style={{ background: 'var(--accent-red-soft)', color: 'var(--accent-red)', border: '1px solid var(--accent-red)' }}
+                            >Confirm</button>
+                          </>
+                        ) : (
                           <button
                             type="button"
                             onClick={() => removeActivation(act)}
-                            className="text-xs px-2 py-1 rounded-lg font-semibold"
-                            style={{ background: 'var(--accent-red-soft)', color: 'var(--accent-red)', border: '1px solid var(--accent-red)' }}
-                          >Confirm</button>
-                        </>
-                      ) : (
-                        <button
-                          type="button"
-                          onClick={() => removeActivation(act)}
-                          disabled={deletingId === act.id}
-                          className="w-8 h-8 rounded-lg flex items-center justify-center transition-all hover:scale-105"
-                          style={{ background: 'var(--accent-red-soft)', border: '1px solid var(--accent-red)', color: 'var(--accent-red)' }}
-                          title="Delete activation"
-                        >
-                          {deletingId === act.id ? <Loader2 size={14} className="animate-spin" /> : <Trash2 size={14} />}
-                        </button>
-                      )}
-                    </div>
+                            disabled={deletingId === act.id}
+                            className="w-8 h-8 rounded-lg flex items-center justify-center transition-all hover:scale-105"
+                            style={{ background: 'var(--accent-red-soft)', border: '1px solid var(--accent-red)', color: 'var(--accent-red)' }}
+                            title="Delete activation"
+                          >
+                            {deletingId === act.id ? <Loader2 size={14} className="animate-spin" /> : <Trash2 size={14} />}
+                          </button>
+                        )}
+                      </div>
+                    )}
                   </div>
                 </div>
               </div>
@@ -255,6 +352,71 @@ export default function AdminActivations() {
           <button onClick={() => { const p = page - 1; setPage(p); load(p, filter); }} disabled={page===1} className="btn-secondary py-1 px-3 text-xs">← Prev</button>
           <span className="text-xs" style={{ color: 'var(--text-muted)' }}>{page} / {pagination.pages}</span>
           <button onClick={() => { const p = page + 1; setPage(p); load(p, filter); }} disabled={page===pagination.pages} className="btn-secondary py-1 px-3 text-xs">Next →</button>
+        </div>
+      )}
+
+      {/* ── Sticky Bulk Action Bar ── */}
+      {selectedIds.size > 0 && (
+        <div
+          className="fixed bottom-0 left-0 right-0 z-40 p-3 animate-slide-up"
+          style={{ background: 'var(--bg-secondary)', borderTop: '1px solid var(--border-subtle)', boxShadow: '0 -4px 24px rgba(0,0,0,0.25)' }}
+        >
+          {/* Confirm warning */}
+          {bulkConfirm && (
+            <div
+              className="flex items-center gap-2 p-2.5 rounded-xl mb-2 animate-slide-up"
+              style={{ background: 'var(--badge-error-bg)', border: '1.5px solid var(--accent-red)' }}
+            >
+              <AlertCircle size={13} style={{ color: 'var(--accent-red)', flexShrink: 0 }} />
+              <p className="text-xs flex-1" style={{ color: 'var(--accent-red)' }}>
+                This will delete <strong>{selectedIds.size}</strong> activation(s). Tap again to confirm.
+              </p>
+              <button
+                type="button"
+                onClick={() => setBulkConfirm(false)}
+                className="text-xs px-2 py-1 rounded-lg flex-shrink-0"
+                style={{ background: 'var(--bg-tertiary)', color: 'var(--text-muted)', border: '1px solid var(--border-subtle)' }}
+              >Cancel</button>
+            </div>
+          )}
+
+          <div className="flex items-center gap-3">
+            <div className="flex-1 min-w-0">
+              <p className="text-xs font-semibold" style={{ color: 'var(--text-primary)' }}>
+                <span
+                  className="inline-flex items-center justify-center w-5 h-5 rounded-full text-[11px] font-bold mr-1.5"
+                  style={{ background: 'var(--accent-blue)', color: '#fff' }}
+                >
+                  {selectedIds.size}
+                </span>
+                activation{selectedIds.size !== 1 ? 's' : ''} selected
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={exitSelectMode}
+              className="text-xs px-3 py-2 rounded-xl font-semibold"
+              style={{ background: 'var(--bg-tertiary)', color: 'var(--text-muted)', border: '1px solid var(--border-subtle)' }}
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              onClick={handleBulkDelete}
+              disabled={bulkDeleting}
+              className="text-xs px-4 py-2 rounded-xl font-bold flex items-center gap-1.5"
+              style={{
+                background: bulkConfirm ? 'var(--accent-red)' : 'var(--accent-red-soft)',
+                color: bulkConfirm ? '#fff' : 'var(--accent-red)',
+                border: '1.5px solid var(--accent-red)',
+                transition: 'background 0.2s',
+              }}
+            >
+              {bulkDeleting
+                ? <><Loader2 size={13} className="animate-spin" /> Deleting…</>
+                : <><Trash2 size={13} /> {bulkConfirm ? 'Confirm Delete' : 'Delete Selected'}</>}
+            </button>
+          </div>
         </div>
       )}
     </div>
