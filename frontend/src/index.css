@@ -140,6 +140,22 @@
     user-select: none;
   }
 
+  /* ── Extra hardening: any <a href> that survives in the DOM should never show
+     the native iOS/Android "Open Link / Copy Link" callout on long-press ── */
+  a[href] {
+    -webkit-touch-callout: none !important;
+    -webkit-user-drag: none !important;
+    touch-action: manipulation;            /* Kills the 300 ms long-press gesture that triggers native popups */
+    pointer-events: auto;                  /* Clicks still work; the JS layer handles href-less navigation */
+  }
+
+  /* ── Ensure buttons & nav elements suppress long-press delay on older Android ── */
+  button, [role="button"], [tabindex] {
+    touch-action: manipulation;
+    -webkit-touch-callout: none !important;
+    -webkit-tap-highlight-color: transparent;
+  }
+
   /* Explicitly re-enable selection only for fields requiring typing for flawless input UX */
   input, textarea {
     -webkit-user-select: text !important;

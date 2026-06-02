@@ -55,15 +55,26 @@ export default function NotInTelegram() {
         </p>
       </div>
 
-      {/* Telegram brand icon + button */}
-      <a
-        href="https://t.me"
-        target="_blank"
-        rel="noopener noreferrer"
+      {/* Telegram brand icon + button — intentionally a <button>, NOT an <a href>,
+          so the Telegram WebView never surfaces a URL in its native link-preview
+          action sheet, status bar, or long-press context menu. */}
+      <button
+        type="button"
+        onClick={() => {
+          try {
+            // Use Telegram's own openLink API when available so the URL is
+            // opened by Telegram itself (no browser address bar shown).
+            window.Telegram?.WebApp?.openLink?.('https://t.me');
+          } catch {
+            window.open('https://t.me', '_blank', 'noopener,noreferrer');
+          }
+        }}
         className="flex items-center gap-3 px-8 py-4 rounded-2xl font-bold text-white text-base shadow-lg transition-transform active:scale-95"
         style={{
           background: 'linear-gradient(135deg, #2aabee, #229ed9)',
           boxShadow: '0 6px 24px rgba(42,171,238,0.4)',
+          border: 'none',
+          cursor: 'pointer',
         }}
       >
         <svg width="22" height="22" viewBox="0 0 240 240" fill="none">
@@ -74,7 +85,7 @@ export default function NotInTelegram() {
           />
         </svg>
         {s.button}
-      </a>
+      </button>
 
       <p className="text-xs" style={{ color: 'var(--text-faint)' }}>{s.or}</p>
     </div>
