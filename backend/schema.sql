@@ -210,5 +210,7 @@ ON CONFLICT (method_id) DO NOTHING;
 -- App settings
 INSERT INTO app_settings (key, value) VALUES
   ('default_language',      'en'),
-  ('min_withdrawal_amount', '1')
+  ('min_withdrawal_amount', '1'),
+  ('startup_message',       '📢 Welcome to OTP Activations! Submit your number to start earning rewards instantly! ⚡'),
+  ('bot_welcome_message',   '👋 Привет, {first_name}!\n\nДобро пожаловать в НомерМаркет! Откройте мини-приложение и начните зарабатывать уже сегодня. 💰🚀')
 ON CONFLICT (key) DO NOTHING;

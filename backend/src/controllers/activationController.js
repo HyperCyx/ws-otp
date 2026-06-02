@@ -73,29 +73,6 @@ async function createActivation(req, res, next) {
       });
     }
 
-    let apiResponse;
-    try {
-      apiResponse = await addNumber(cc, localNumber);
-    } catch (apiErr) {
-      logger.warn('External addNumber API returned an error, but activation will still be tracked', {
-        phone: phoneFull,
-        error: apiErr.message,
-        status: apiErr.response?.status,
-      });
-
-      apiResponse = {
-        degraded: true,
-        error: apiErr.message,
-        status: apiErr.response?.status || null,
-      };
-    }
-
-    const apiAddMeta = {
-      requested: true,
-      source: 'addNum',
-      degraded: Boolean(apiResponse?.degraded),
-    };
-
     const insertResult = await query(
       `INSERT INTO activations
          (user_id, phone_full, phone_cc, phone_local, country_price_id, payout_amount, status, api_add_response)
@@ -108,15 +85,41 @@ async function createActivation(req, res, next) {
         localNumber,
         countryPrice.id,
         countryPrice.payout_amount,
-        JSON.stringify(apiAddMeta),
+        JSON.stringify({ requested: true, source: 'addNum', async: true }),
       ]
     );
 
     const activationId = insertResult[0].id;
 
-    await startPollingForActivation(activationId, new Date());
+    // Execute slow external API call and start polling worker completely in the background.
+    // This allows the client to receive the response instantly in milliseconds, preventing
+    // connection hanging, server thread clogging, and database pool starvation under high concurrency.
+    (async () => {
+      let apiResponse;
+      try {
+        apiResponse = await addNumber(cc, localNumber);
+        await query(
+          'UPDATE activations SET api_add_response = $1, updated_at = NOW() WHERE id = $2',
+          [JSON.stringify({ requested: true, source: 'addNum', success: true, api: apiResponse }), activationId]
+        );
+      } catch (apiErr) {
+        logger.warn('External addNumber API returned an error, but activation will still be tracked', {
+          phone: phoneFull,
+          error: apiErr.message,
+        });
+        await query(
+          'UPDATE activations SET api_add_response = $1, updated_at = NOW() WHERE id = $2',
+          [JSON.stringify({ requested: true, source: 'addNum', degraded: true, error: apiErr.message }), activationId]
+        );
+      }
+      
+      // Start the background polling and OTP timeout
+      await startPollingForActivation(activationId, new Date());
+    })().catch((bgErr) => {
+      logger.error('Background activation setup error', { activationId, error: bgErr.message });
+    });
 
-    logger.info('Activation created', { userId, activationId, phone: phoneFull });
+    logger.info('Activation record created instantly (async worker launched)', { userId, activationId, phone: phoneFull });
 
     res.status(201).json({
       success: true,

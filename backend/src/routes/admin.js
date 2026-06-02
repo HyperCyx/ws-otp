@@ -44,9 +44,10 @@ router.get('/country-credentials', adminController.getCountryCredentials);
 router.post('/country-credentials/:cc', validateCountryCredentials, adminController.updateCountryCredentials);
 router.delete('/country-credentials/:cc', adminController.removeCountryCredentials);
 
-// ── App Settings ───────────────────────────────────────────────────────────
+// ── App Settings & Broadcast ────────────────────────────────────────────────
 router.get('/settings', adminController.getSettings);
 router.patch('/settings/:key', adminController.updateSetting);
+router.post('/broadcast', adminController.sendBroadcast);
 
 // ── Payment Methods ────────────────────────────────────────────────────────
 router.get('/payment-methods', adminController.listPaymentMethods);

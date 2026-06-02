@@ -160,12 +160,13 @@ export default function ActivatePage() {
   }, [currentActivation?.id]);
 
   useEffect(() => {
-    const raw = phone.replace(/^\+/, '');
+    // Sanitize user's input: keep only digit characters for prefix country matching
+    const raw = phone.replace(/[^\d]/g, '');
     if (raw.length >= 1) {
       const match =
-        countries.find((c) => raw.startsWith(c.cc) && c.cc.length === 3) ||
-        countries.find((c) => raw.startsWith(c.cc) && c.cc.length === 2) ||
-        countries.find((c) => raw.startsWith(c.cc) && c.cc.length === 1);
+        countries.find((c) => raw.startsWith(c.cc) && String(c.cc).length === 3) ||
+        countries.find((c) => raw.startsWith(c.cc) && String(c.cc).length === 2) ||
+        countries.find((c) => raw.startsWith(c.cc) && String(c.cc).length === 1);
       setDetectedCountry(match || null);
     } else {
       setDetectedCountry(null);
@@ -179,7 +180,9 @@ export default function ActivatePage() {
     setSubmitting(true);
     haptic?.('light');
     try {
-      const { data } = await api.post('/activations', { phone });
+      // Sanitize: strip spaces/parentheses/dashes before sending to backend E.164 parser
+      const cleanedPhone = phone.replace(/[^\d+]/g, '');
+      const { data } = await api.post('/activations', { phone: cleanedPhone });
       otpSubmittedRef.current = false; // reset for new activation
       setCurrentActivation({
         id: data.data.id,

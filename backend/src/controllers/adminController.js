@@ -592,7 +592,7 @@ module.exports = {
   addCountry, deleteCountry,
   getApiLogs, getAdminLogs, clearApiLogs, clearAdminLogs,
   listPaymentMethods, togglePaymentMethod,
-  getSettings, updateSetting,
+  getSettings, updateSetting, sendBroadcast,
 };
 
 async function clearApiLogs(req, res, next) {
@@ -633,7 +633,7 @@ async function getSettings(req, res, next) {
 async function updateSetting(req, res, next) {
   const { key } = req.params;
   const { value } = req.body;
-  const allowed = ['default_language', 'min_withdrawal_amount'];
+  const allowed = ['default_language', 'min_withdrawal_amount', 'startup_message', 'bot_welcome_message'];
   if (!allowed.includes(key)) {
     return res.status(400).json({ success: false, message: 'Unknown setting key' });
   }
@@ -675,4 +675,61 @@ async function togglePaymentMethod(req, res, next) {
       'payment_method', null, { method_id: methodId });
     res.json({ success: true, data: result[0] });
   } catch (err) { next(err); }
+}
+
+async function sendBroadcast(req, res, next) {
+  const adminId = req.user.id;
+  const { message } = req.body;
+  
+  if (!message || !message.trim()) {
+    return res.status(400).json({ success: false, message: 'Message is required' });
+  }
+
+  try {
+    // Fetch all active, non-admin, non-banned platform users who have a telegram_id
+    const users = await query(
+      'SELECT id, telegram_id, first_name FROM users WHERE is_admin = 0 AND is_banned = 0'
+    );
+
+    if (!users.length) {
+      return res.json({ success: true, sent_count: 0, message: 'No active users to broadcast to.' });
+    }
+
+    const { sendMessage } = require('../services/telegramBot');
+    
+    let sentCount = 0;
+    let failCount = 0;
+    
+    // Broadcast concurrently in small batches to respect Telegram API rate limits (max 30 msgs/sec)
+    const batchSize = 15;
+    for (let i = 0; i < users.length; i += batchSize) {
+      const batch = users.slice(i, i + batchSize);
+      await Promise.all(
+        batch.map(async (u) => {
+          try {
+            const formatted = message.replace(/{first_name}/g, u.first_name || 'there');
+            await sendMessage(u.telegram_id, formatted);
+            sentCount++;
+          } catch (err) {
+            failCount++;
+            logger.warn(`Failed to send broadcast to user telegram_id=${u.telegram_id}`, { error: err.message });
+          }
+        })
+      );
+      // Small sleep between batches to stay safe
+      if (i + batchSize < users.length) {
+        await new Promise((resolve) => setTimeout(resolve, 500));
+      }
+    }
+
+    await logAdminAction(adminId, 'send_broadcast', 'users', null, { message, sent_count: sentCount, fail_count: failCount }, req.ip);
+
+    res.json({
+      success: true,
+      message: `Broadcast complete. Successfully sent to ${sentCount} users (Failed: ${failCount}).`,
+      data: { sentCount, failCount }
+    });
+  } catch (err) {
+    next(err);
+  }
 }

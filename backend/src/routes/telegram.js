@@ -20,9 +20,22 @@ router.post('/webhook', async (req, res) => {
 
   if (chatId && payload !== null) {
     const firstName = update?.message?.from?.first_name || 'there';
-    const welcomeText =
-      `👋 Привет! ${firstName}!\n\n` +
-      'Добро пожаловать в НомерМаркет! Откройте мини-приложение и начните зарабатывать уже сегодня. 💰🚀';
+    
+    let welcomeText;
+    try {
+      const { query: dbQuery } = require('../config/database');
+      const [setting] = await dbQuery("SELECT value FROM app_settings WHERE key = 'bot_welcome_message'");
+      if (setting?.value) {
+        welcomeText = setting.value.replace(/{first_name}/g, firstName);
+      }
+    } catch (err) {
+      logger.error('Failed to load dynamic welcome message', { error: err.message });
+    }
+    
+    if (!welcomeText) {
+      welcomeText = `👋 Привет! ${firstName}!\n\nДобро пожаловать в НомерМаркет! Откройте мини-приложение и начните зарабатывать уже сегодня. 💰🚀`;
+    }
+    
     await sendMessage(chatId, welcomeText);
   }
 

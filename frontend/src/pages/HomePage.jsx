@@ -43,7 +43,7 @@ export default function HomePage() {
   const { user } = useAuthStore();
   const { balance, totalEarned, lockedBalance, fetchWallet } = useWalletStore();
   const { on } = useWebSocket();
-  const { t } = useLang();
+  const { t, startupMessage } = useLang();
   const [activations, setActivations] = useState([]);
   const [loading, setLoading] = useState(true);
   const [totalCount, setTotalCount] = useState(0);
@@ -83,6 +83,31 @@ export default function HomePage() {
 
   return (
     <div className="space-y-5 animate-fade-in">
+
+      {/* ── Dynamic Announcement Banner ── */}
+      {startupMessage && (
+        <div className="glass-card p-4 relative overflow-hidden animate-slide-down flex items-start gap-3 animate-pulse-glow"
+          style={{
+            border: '1.5px solid transparent',
+            backgroundImage: 'linear-gradient(var(--bg-card), var(--bg-card)), linear-gradient(135deg, #0ea5e9, #8b5cf6)',
+            backgroundOrigin: 'border-box',
+            backgroundClip: 'padding-box, border-box',
+            boxShadow: 'var(--shadow-card)',
+          }}>
+          <div className="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0 text-base"
+            style={{ background: 'var(--accent-blue-soft)', color: 'var(--accent-blue)', border: '1px solid var(--border-subtle)' }}>
+            📢
+          </div>
+          <div className="flex-1 min-w-0">
+            <p className="text-[11px] font-bold uppercase tracking-wider mb-0.5" style={{ color: 'var(--accent-blue)' }}>
+              {t('nav.home') === 'Home' ? 'Announcement' : 'Объявление'}
+            </p>
+            <p className="text-xs font-semibold leading-relaxed" style={{ color: 'var(--text-primary)' }}>
+              {startupMessage}
+            </p>
+          </div>
+        </div>
+      )}
 
       {/* ── Hero Balance Card ── */}
       <div className="rounded-2xl p-6 animate-pulse-glow relative overflow-hidden"

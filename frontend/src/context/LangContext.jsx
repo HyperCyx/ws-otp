@@ -7,6 +7,7 @@ const LangContext = createContext(null);
 export function LangProvider({ children }) {
   const [lang, setLangState] = useState(() => localStorage.getItem('lang') || 'en');
   const [minWithdrawal, setMinWithdrawal] = useState(1);
+  const [startupMessage, setStartupMessage] = useState('');
   const [settingsLoaded, setSettingsLoaded] = useState(false);
 
   const refreshSettings = useCallback(() => {
@@ -18,6 +19,9 @@ export function LangProvider({ children }) {
         }
         if (s.min_withdrawal_amount) {
           setMinWithdrawal(parseFloat(s.min_withdrawal_amount));
+        }
+        if (s.startup_message !== undefined) {
+          setStartupMessage(s.startup_message || '');
         }
       })
       .catch(() => {})
@@ -40,7 +44,7 @@ export function LangProvider({ children }) {
   }, [lang]);
 
   return (
-    <LangContext.Provider value={{ lang, setLang, t, minWithdrawal, settingsLoaded, refreshSettings }}>
+    <LangContext.Provider value={{ lang, setLang, t, minWithdrawal, startupMessage, settingsLoaded, refreshSettings }}>
       {children}
     </LangContext.Provider>
   );
