@@ -105,7 +105,7 @@ app.use('/api/telegram', telegramRoutes);
 app.get('/api/settings', require('./src/middleware/auth').requireAuth, async (req, res, next) => {
   try {
     const { query: dbQuery } = require('./src/config/database');
-    const rows = await dbQuery(`SELECT key, value FROM app_settings WHERE key IN ('default_language','min_withdrawal_amount','startup_message')`);
+    const rows = await dbQuery(`SELECT key, value FROM app_settings WHERE key IN ('default_language','min_withdrawal_amount','startup_message','startup_message_enabled')`);
     const result = {};
     rows.forEach((r) => { result[r.key] = r.value; });
     res.json({ success: true, data: result });
