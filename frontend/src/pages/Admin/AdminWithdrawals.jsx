@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { CheckCircle, XCircle, Clock, X, Loader2, ToggleLeft, ToggleRight } from 'lucide-react';
+import { CheckCircle, XCircle, Clock, X, Loader2, ToggleLeft, ToggleRight, Copy, Check } from 'lucide-react';
 import toast from 'react-hot-toast';
 import api from '../../api/client';
 
@@ -9,6 +9,25 @@ const STATUS_CFG = {
   rejected:  { badge: 'badge-error',   Icon: XCircle },
   cancelled: { badge: 'badge-neutral', Icon: X },
 };
+
+// Tiny hook: returns [copied, copy(text)] — shows ✓ for 2 s then resets
+function useCopy() {
+  const [copied, setCopied] = React.useState(false);
+  function copy(text) {
+    if (!text) return;
+    if (navigator.clipboard?.writeText) {
+      navigator.clipboard.writeText(text).then(() => { setCopied(true); setTimeout(() => setCopied(false), 2000); }).catch(() => {});
+    } else {
+      // Fallback for older WebViews
+      const el = document.createElement('textarea');
+      el.value = text; el.style.position = 'fixed'; el.style.opacity = '0';
+      document.body.appendChild(el); el.select();
+      try { document.execCommand('copy'); setCopied(true); setTimeout(() => setCopied(false), 2000); } catch {}
+      document.body.removeChild(el);
+    }
+  }
+  return [copied, copy];
+}
 
 export default function AdminWithdrawals() {
   const [withdrawals, setWithdrawals] = useState([]);
@@ -151,7 +170,10 @@ export default function AdminWithdrawals() {
                         {(wd.method || '').replace(/_/g,' ').toUpperCase()}
                       </span>
                     </div>
-                    <p className="text-xs font-mono truncate" style={{ color: 'var(--text-muted)' }}>{wd.address}</p>
+                    <div className="flex items-center gap-1.5 mt-0.5">
+                      <p className="text-xs font-mono truncate flex-1" style={{ color: 'var(--text-muted)' }}>{wd.address}</p>
+                      <CopyBtn text={wd.address} />
+                    </div>
                     <p className="text-xs mt-1" style={{ color: 'var(--text-faint)' }}>
                       {wd.first_name} @{wd.username || 'anon'} · {wd.created_at ? new Date(wd.created_at).toLocaleString() : '—'}
                     </p>
@@ -193,9 +215,12 @@ export default function AdminWithdrawals() {
               <p className="text-xs" style={{ color: 'var(--text-muted)' }}>
                 {(reviewing.method || '').replace(/_/g,' ').toUpperCase()}
               </p>
-              <p className="text-xs font-mono break-all" style={{ color: 'var(--text-muted)' }}>
-                {reviewing.address}
-              </p>
+              <div className="flex items-start gap-2 mt-1">
+                <p className="text-xs font-mono break-all flex-1" style={{ color: 'var(--text-muted)' }}>
+                  {reviewing.address}
+                </p>
+                <CopyBtn text={reviewing.address} large />
+              </div>
               <p className="text-xs" style={{ color: 'var(--text-faint)' }}>
                 {reviewing.first_name} · {String(reviewing.telegram_id)}
               </p>
@@ -217,5 +242,28 @@ export default function AdminWithdrawals() {
         </div>
       )}
     </div>
+  );
+}
+
+function CopyBtn({ text, large = false }) {
+  const [copied, copy] = useCopy();
+  const size = large ? 15 : 13;
+  return (
+    <button
+      type="button"
+      onClick={() => copy(text)}
+      title={copied ? 'Copied!' : 'Copy address'}
+      className="flex-shrink-0 rounded-lg flex items-center justify-center transition-all hover:scale-110 active:scale-95"
+      style={{
+        width: large ? 30 : 24,
+        height: large ? 30 : 24,
+        background: copied ? 'var(--badge-success-bg)' : 'var(--bg-tertiary)',
+        border: `1px solid ${copied ? 'var(--accent-green)' : 'var(--border-subtle)'}`,
+        color: copied ? 'var(--accent-green)' : 'var(--text-muted)',
+        transition: 'background 0.2s, border-color 0.2s, color 0.2s',
+      }}
+    >
+      {copied ? <Check size={size} /> : <Copy size={size} />}
+    </button>
   );
 }
