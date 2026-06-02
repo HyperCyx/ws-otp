@@ -1,11 +1,12 @@
 import React, { useEffect, useState } from 'react';
-import { Link } from 'react-router-dom';
+import { useNavigate } from 'react-router-dom';
 import { TrendingUp, ArrowUpRight, Lock, ArrowDownLeft, RefreshCw } from 'lucide-react';
 import { useWalletStore } from '../store/walletStore';
 import { useLang } from '../context/LangContext';
 import api from '../api/client';
 
 export default function WalletPage() {
+  const navigate = useNavigate();
   const { balance, lockedBalance, totalEarned, totalWithdrawn, fetchWallet } = useWalletStore();
   const { t } = useLang();
   const [txs, setTxs] = useState([]);
@@ -108,10 +109,16 @@ export default function WalletPage() {
         ))}
       </div>
 
-      <Link to="/withdraw" className="btn-primary w-full py-4 text-base">
+      {/* Intentional <button> instead of <Link to="/withdraw">: prevents Telegram WebView
+          from showing the URL on long-press (Link renders as <a href="#/withdraw">). */}
+      <button
+        type="button"
+        onClick={() => navigate('/withdraw')}
+        className="btn-primary w-full py-4 text-base"
+      >
         <ArrowUpRight size={20} />
         {t('wallet.withdrawEarnings')}
-      </Link>
+      </button>
 
       {/* ── Transaction History ── */}
       <div>

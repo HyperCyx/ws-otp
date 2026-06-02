@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
-import { Link } from 'react-router-dom';
-import { Zap, Clock, TrendingUp, ArrowRight, CheckCircle, XCircle, AlertCircle, Loader2 } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
+import { Zap, Clock, TrendingUp, ArrowRight, Loader2 } from 'lucide-react';
 import { useAuthStore } from '../store/authStore';
 import { useWalletStore } from '../store/walletStore';
 import { useWebSocket } from '../hooks/useWebSocket.js';
@@ -40,6 +40,7 @@ function CountdownBadge({ createdAt }) {
 }
 
 export default function HomePage() {
+  const navigate = useNavigate();
   const { user } = useAuthStore();
   const { balance, totalEarned, lockedBalance, fetchWallet } = useWalletStore();
   const { on } = useWebSocket();
@@ -143,25 +144,35 @@ export default function HomePage() {
         </div>
       </div>
 
-      {/* ── Quick Actions ── */}
+      {/* ── Quick Actions — buttons, NOT links, so no href is ever in the DOM ── */}
       <div className="grid grid-cols-2 gap-3">
-        <Link to="/activate" className="glass-card-hover p-4 flex flex-col gap-2 cursor-pointer">
+        {/* Intentional <button> instead of <Link>: prevents Telegram WebView from
+            showing a URL on long-press (Link renders as <a href="#/activate">). */}
+        <button
+          type="button"
+          onClick={() => navigate('/activate')}
+          className="glass-card-hover p-4 flex flex-col gap-2 cursor-pointer text-left w-full"
+        >
           <div className="w-10 h-10 rounded-xl flex items-center justify-center"
             style={{ background: 'var(--accent-blue-soft)' }}>
             <Zap size={20} style={{ color: 'var(--accent-blue)' }} />
           </div>
           <p className="text-sm font-bold" style={{ color: 'var(--text-primary)' }}>{t('home.newActivation')}</p>
           <p className="text-xs" style={{ color: 'var(--text-faint)' }}>{t('home.submitWhatsApp')}</p>
-        </Link>
+        </button>
 
-        <Link to="/wallet" className="glass-card-hover p-4 flex flex-col gap-2 cursor-pointer">
+        <button
+          type="button"
+          onClick={() => navigate('/wallet')}
+          className="glass-card-hover p-4 flex flex-col gap-2 cursor-pointer text-left w-full"
+        >
           <div className="w-10 h-10 rounded-xl flex items-center justify-center"
             style={{ background: 'var(--badge-purple-bg)' }}>
             <TrendingUp size={20} style={{ color: 'var(--accent-purple)' }} />
           </div>
           <p className="text-sm font-bold" style={{ color: 'var(--text-primary)' }}>{t('home.myWallet')}</p>
           <p className="text-xs" style={{ color: 'var(--text-faint)' }}>{t('home.viewWithdraw')}</p>
-        </Link>
+        </button>
       </div>
 
       {/* ── Recent Activations ── */}
@@ -171,10 +182,15 @@ export default function HomePage() {
             <Clock size={15} style={{ color: 'var(--text-muted)' }} />
             {t('home.recentActivations')}
           </h2>
-          <Link to="/history" className="text-xs flex items-center gap-1 font-medium"
-            style={{ color: 'var(--accent-blue)' }}>
+          {/* Button instead of <Link> — avoids exposing #/history on long-press */}
+          <button
+            type="button"
+            onClick={() => navigate('/history')}
+            className="text-xs flex items-center gap-1 font-medium"
+            style={{ color: 'var(--accent-blue)', background: 'none', border: 'none', padding: 0, cursor: 'pointer' }}
+          >
             {t('home.viewAll')} <ArrowRight size={12} />
-          </Link>
+          </button>
         </div>
 
         {loading ? (
@@ -186,9 +202,14 @@ export default function HomePage() {
             <Zap size={32} className="mx-auto mb-3" style={{ color: 'var(--text-faint)' }} />
             <p className="font-medium text-sm" style={{ color: 'var(--text-muted)' }}>{t('home.noActivations')}</p>
             <p className="text-xs mt-1 mb-4" style={{ color: 'var(--text-faint)' }}>{t('home.submitToEarn')}</p>
-            <Link to="/activate" className="btn-primary text-xs py-2.5 px-5 inline-flex">
+            {/* Button instead of <Link> */}
+            <button
+              type="button"
+              onClick={() => navigate('/activate')}
+              className="btn-primary text-xs py-2.5 px-5 inline-flex"
+            >
               {t('home.getStarted')}
-            </Link>
+            </button>
           </div>
         ) : (
           <div className="space-y-2">

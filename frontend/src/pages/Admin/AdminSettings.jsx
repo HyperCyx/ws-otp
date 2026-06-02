@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { Loader2, Save, Globe, DollarSign, MessageSquare, Send, Bell } from 'lucide-react';
+import { Loader2, Save, Globe, DollarSign, MessageSquare, Send, Bell, AlertCircle } from 'lucide-react';
 import toast from 'react-hot-toast';
 import api from '../../api/client';
 import { useLang } from '../../context/LangContext';
@@ -203,12 +203,22 @@ function TextSettingCard({ title, icon: Icon, desc, value, saving, onSave, place
 function BroadcastCard() {
   const [message, setMessage] = useState('');
   const [sending, setSending] = useState(false);
+  // Inline confirm state — two-step send instead of window.confirm() which
+  // exposes the page URL in its native dialog title bar on Android WebViews.
+  const [awaitingConfirm, setAwaitingConfirm] = useState(false);
 
   async function handleSend(e) {
     e.preventDefault();
     if (!message.trim()) return toast.error('Please enter a message to broadcast');
-    if (!window.confirm('Are you sure you want to send this broadcast to ALL active users?')) return;
 
+    // First press: enter confirm state
+    if (!awaitingConfirm) {
+      setAwaitingConfirm(true);
+      return;
+    }
+
+    // Second press: confirmed — execute broadcast
+    setAwaitingConfirm(false);
     setSending(true);
     try {
       const { data } = await api.post('/admin/broadcast', { message });
@@ -238,11 +248,30 @@ function BroadcastCard() {
           onChange={(e) => setMessage(e.target.value)}
           required
         />
+        {awaitingConfirm && (
+          <div
+            className="flex items-center gap-2 p-3 rounded-xl animate-slide-up"
+            style={{ background: 'var(--badge-error-bg)', border: '1.5px solid var(--accent-red)' }}
+          >
+            <AlertCircle size={14} style={{ color: 'var(--accent-red)' }} className="flex-shrink-0" />
+            <p className="text-xs flex-1" style={{ color: 'var(--accent-red)' }}>
+              This will message ALL active users. Press Send again to confirm.
+            </p>
+            <button
+              type="button"
+              onClick={() => setAwaitingConfirm(false)}
+              className="text-xs px-2 py-1 rounded-lg flex-shrink-0"
+              style={{ background: 'var(--bg-tertiary)', color: 'var(--text-muted)', border: '1px solid var(--border-subtle)' }}
+            >Cancel</button>
+          </div>
+        )}
         <button type="submit" className="btn-primary w-full py-2.5 text-sm flex items-center justify-center gap-2"
-          style={{ background: 'linear-gradient(135deg, #8b5cf6, #7c3aed)', borderColor: 'var(--accent-purple)' }}
+          style={awaitingConfirm
+            ? { background: 'var(--accent-red)', borderColor: 'var(--accent-red)' }
+            : { background: 'linear-gradient(135deg, #8b5cf6, #7c3aed)', borderColor: 'var(--accent-purple)' }}
           disabled={sending}>
           {sending ? <Loader2 size={15} className="animate-spin" /> : <Send size={15} />}
-          {sending ? 'Broadcasting…' : 'Send Broadcast to All Users'}
+          {sending ? 'Broadcasting…' : awaitingConfirm ? 'Tap again to confirm broadcast' : 'Send Broadcast to All Users'}
         </button>
       </form>
     </div>

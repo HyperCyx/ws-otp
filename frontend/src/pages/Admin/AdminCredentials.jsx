@@ -2,10 +2,69 @@ import React, { useEffect, useState, useCallback } from 'react';
 import {
   KeyRound, Save, Trash2, Loader2, Eye, EyeOff,
   CheckCircle2, AlertTriangle, RefreshCw, ShieldCheck,
-  PlusCircle, ChevronDown, ChevronUp, X,
+  PlusCircle, ChevronDown, ChevronUp, X, AlertCircle,
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import api from '../../api/client';
+
+// ── Inline Confirm Dialog ───────────────────────────────────────────────────
+// Replaces window.confirm() which briefly shows the page URL in its native
+// browser dialog title bar on some Android WebViews inside Telegram.
+function ConfirmDialog({ message, onConfirm, onCancel }) {
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center px-6"
+      style={{ background: 'rgba(0,0,0,0.55)', backdropFilter: 'blur(4px)' }}
+      // Tap outside = cancel
+      onPointerDown={(e) => { if (e.target === e.currentTarget) onCancel(); }}
+    >
+      <div
+        className="glass-card p-5 w-full max-w-xs space-y-4 animate-slide-up"
+        style={{ border: '1.5px solid var(--accent-red)', boxShadow: '0 12px 40px rgba(0,0,0,0.4)' }}
+      >
+        <div className="flex items-start gap-3">
+          <div
+            className="w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0"
+            style={{ background: 'var(--badge-error-bg)' }}
+          >
+            <AlertCircle size={18} style={{ color: 'var(--accent-red)' }} />
+          </div>
+          <p className="text-sm leading-relaxed" style={{ color: 'var(--text-primary)' }}>
+            {message}
+          </p>
+        </div>
+        <div className="flex gap-2">
+          <button
+            type="button"
+            onClick={onCancel}
+            className="flex-1 py-2.5 rounded-xl text-sm font-semibold transition-all"
+            style={{
+              background: 'var(--bg-tertiary)',
+              border: '1px solid var(--border-subtle)',
+              color: 'var(--text-muted)',
+              cursor: 'pointer',
+            }}
+          >
+            Cancel
+          </button>
+          <button
+            type="button"
+            onClick={onConfirm}
+            className="flex-1 py-2.5 rounded-xl text-sm font-semibold transition-all"
+            style={{
+              background: 'var(--badge-error-bg)',
+              border: '1.5px solid var(--accent-red)',
+              color: 'var(--accent-red)',
+              cursor: 'pointer',
+            }}
+          >
+            Confirm
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
 
 // ── Token status badge ──────────────────────────────────────────────────────
 function TokenBadge({ status, expiresAt }) {
@@ -160,6 +219,8 @@ function CredentialRow({ country, onSaved }) {
   const [saving, setSaving] = useState(false);
   const [removing, setRemoving] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  // Inline confirm dialog state — replaces window.confirm() which leaks URL
+  const [confirmDialog, setConfirmDialog] = useState(null); // { message, onConfirm }
   const [form, setForm] = useState({
     api_account: country.api_account || '',
     api_password: '',
@@ -183,31 +244,54 @@ function CredentialRow({ country, onSaved }) {
     } finally { setSaving(false); }
   }
 
-  async function removeCredentials() {
-    if (!window.confirm(`Remove credentials for +${country.cc} (${country.country_name})?\nThis country will stop accepting activations.`)) return;
-    setRemoving(true);
-    try {
-      await api.delete(`/admin/country-credentials/${country.cc}`);
-      toast.success(`Credentials removed for +${country.cc}`);
-      onSaved();
-    } catch (err) {
-      toast.error(err.response?.data?.message || 'Failed to remove credentials');
-    } finally { setRemoving(false); }
+  function removeCredentials() {
+    // Inline dialog instead of window.confirm() — native browser dialogs can
+    // briefly expose the page URL in their title bar on Android WebViews.
+    setConfirmDialog({
+      message: `Remove credentials for +${country.cc} (${country.country_name})? This country will stop accepting activations.`,
+      onConfirm: async () => {
+        setConfirmDialog(null);
+        setRemoving(true);
+        try {
+          await api.delete(`/admin/country-credentials/${country.cc}`);
+          toast.success(`Credentials removed for +${country.cc}`);
+          onSaved();
+        } catch (err) {
+          toast.error(err.response?.data?.message || 'Failed to remove credentials');
+        } finally { setRemoving(false); }
+      },
+    });
   }
 
-  async function deleteCountry() {
-    if (!window.confirm(`Delete country +${country.cc} (${country.country_name}) entirely?\nThis cannot be undone.`)) return;
-    setDeleting(true);
-    try {
-      await api.delete(`/admin/countries/${country.cc}`);
-      toast.success(`Country +${country.cc} deleted`);
-      onSaved();
-    } catch (err) {
-      toast.error(err.response?.data?.message || 'Failed to delete country');
-    } finally { setDeleting(false); }
+  function deleteCountry() {
+    // Inline dialog instead of window.confirm()
+    setConfirmDialog({
+      message: `Delete country +${country.cc} (${country.country_name}) entirely? This cannot be undone.`,
+      onConfirm: async () => {
+        setConfirmDialog(null);
+        setDeleting(true);
+        try {
+          await api.delete(`/admin/countries/${country.cc}`);
+          toast.success(`Country +${country.cc} deleted`);
+          onSaved();
+        } catch (err) {
+          toast.error(err.response?.data?.message || 'Failed to delete country');
+        } finally { setDeleting(false); }
+      },
+    });
   }
 
   return (
+    <>
+    {/* Inline confirmation dialog — rendered in the React tree, no native browser
+        popup, so no URL is ever shown in a dialog title bar. */}
+    {confirmDialog && (
+      <ConfirmDialog
+        message={confirmDialog.message}
+        onConfirm={confirmDialog.onConfirm}
+        onCancel={() => setConfirmDialog(null)}
+      />
+    )}
     <div className="glass-card overflow-hidden transition-all"
       style={{ border: hasCredentials ? '1px solid var(--accent-purple)' : '1px solid var(--accent-red)' }}>
       {/* Header */}
@@ -299,10 +383,10 @@ function CredentialRow({ country, onSaved }) {
         </div>
       )}
     </div>
+    </>
   );
 }
 
-// ── Main page ───────────────────────────────────────────────────────────────
 export default function AdminCredentials() {
   const [countries, setCountries] = useState([]);
   const [loading, setLoading] = useState(true);

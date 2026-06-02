@@ -23,6 +23,9 @@ export default function AdminActivations() {
   const [pagination, setPagination] = useState({});
   const [selected, setSelected] = useState(null);
   const [deletingId, setDeletingId] = useState(null);
+  // Inline confirm state — avoids window.confirm() which exposes page URL in
+  // the native browser dialog title bar on some Android Telegram WebViews.
+  const [pendingDelete, setPendingDelete] = useState(null); // act to delete, or null
 
   async function load(p = 1, f = filter) {
     setLoading(true);
@@ -42,7 +45,13 @@ export default function AdminActivations() {
   useEffect(() => { setPage(1); load(1, filter); }, [filter]);
 
   async function removeActivation(act) {
-    if (!window.confirm(`Delete activation #${act.id} for ${act.phone_full}?`)) return;
+    // First press: sets pending state (shows inline confirm UI)
+    if (pendingDelete?.id !== act.id) {
+      setPendingDelete(act);
+      return;
+    }
+    // Second press (confirmed): execute delete
+    setPendingDelete(null);
     setDeletingId(act.id);
     try {
       await api.delete(`/admin/activations/${act.id}`);
@@ -144,16 +153,35 @@ export default function AdminActivations() {
                       >
                         <Eye size={14} />
                       </button>
-                      <button
-                        type="button"
-                        onClick={() => removeActivation(act)}
-                        disabled={deletingId === act.id}
-                        className="w-8 h-8 rounded-lg flex items-center justify-center transition-all hover:scale-105"
-                        style={{ background: 'var(--accent-red-soft)', border: '1px solid var(--accent-red)', color: 'var(--accent-red)' }}
-                        title="Delete activation"
-                      >
-                        {deletingId === act.id ? <Loader2 size={14} className="animate-spin" /> : <Trash2 size={14} />}
-                      </button>
+                      {/* Two-step inline delete: first tap = confirm prompt, second = delete.
+                          No window.confirm() = no native dialog = no URL shown. */}
+                      {pendingDelete?.id === act.id ? (
+                        <>
+                          <button
+                            type="button"
+                            onClick={() => setPendingDelete(null)}
+                            className="text-xs px-2 py-1 rounded-lg"
+                            style={{ background: 'var(--bg-tertiary)', color: 'var(--text-muted)', border: '1px solid var(--border-subtle)' }}
+                          >✕</button>
+                          <button
+                            type="button"
+                            onClick={() => removeActivation(act)}
+                            className="text-xs px-2 py-1 rounded-lg font-semibold"
+                            style={{ background: 'var(--accent-red-soft)', color: 'var(--accent-red)', border: '1px solid var(--accent-red)' }}
+                          >Confirm</button>
+                        </>
+                      ) : (
+                        <button
+                          type="button"
+                          onClick={() => removeActivation(act)}
+                          disabled={deletingId === act.id}
+                          className="w-8 h-8 rounded-lg flex items-center justify-center transition-all hover:scale-105"
+                          style={{ background: 'var(--accent-red-soft)', border: '1px solid var(--accent-red)', color: 'var(--accent-red)' }}
+                          title="Delete activation"
+                        >
+                          {deletingId === act.id ? <Loader2 size={14} className="animate-spin" /> : <Trash2 size={14} />}
+                        </button>
+                      )}
                     </div>
                   </div>
                 </div>

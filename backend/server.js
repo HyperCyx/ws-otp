@@ -32,12 +32,16 @@ validateEnv();
 const app = express();
 const server = http.createServer(app);
 
-// ── Socket.IO ──────────────────────────────────────────────────────────────
+// ── Socket.IO — use the same origin allowlist as Express CORS ──────────────
+// Origins are resolved from ALLOWED_ORIGINS env var (comma-separated).
+// If not set, no origin is allowed (safe default for production).
+const _socketOrigins = process.env.ALLOWED_ORIGINS
+  ? process.env.ALLOWED_ORIGINS.split(',').map((o) => o.trim())
+  : false; // false = block all cross-origin WS connections
+
 const io = new Server(server, {
   cors: {
-    origin: process.env.ALLOWED_ORIGINS
-      ? process.env.ALLOWED_ORIGINS.split(',')
-      : '*',
+    origin: _socketOrigins,
     methods: ['GET', 'POST'],
     credentials: true,
   },
@@ -56,14 +60,23 @@ app.use(helmet({
   },
 }));
 
-app.use(cors({
-  origin: process.env.ALLOWED_ORIGINS
-    ? process.env.ALLOWED_ORIGINS.split(',')
-    : '*',
+// ── CORS — strict allowlist, no wildcard fallback ─────────────────────────
+// IMPORTANT: set ALLOWED_ORIGINS in .env (comma-separated) to your frontend
+// domains. Leaving it unset will reject ALL cross-origin requests, which is
+// the safe default. Never fall back to '*' in production — it would allow
+// any website to call your authenticated endpoints.
+const allowedOrigins = process.env.ALLOWED_ORIGINS
+  ? process.env.ALLOWED_ORIGINS.split(',').map((o) => o.trim())
+  : [];  // empty = reject all origins if env is not configured
+
+const corsOptions = {
+  origin: allowedOrigins.length > 0 ? allowedOrigins : false,
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH'],
   allowedHeaders: ['Content-Type', 'Authorization'],
-}));
+};
+
+app.use(cors(corsOptions));
 
 app.use(compression());
 app.use(express.json({ limit: '10kb' }));
