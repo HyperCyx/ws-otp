@@ -114,23 +114,26 @@ async function createActivation(req, res, next) {
       }
 
       // ── "Number already exists" early-cancel ──────────────────────────────
-      // API response shape:
-      //   { api: { msg: "Number already exists", code: 400 }, source: "addNum", success: true }
-      // The outer `success: true` means the HTTP call succeeded; the inner api.code: 400
-      // is the real business rejection. Detect and cancel immediately so the user
-      // doesn't wait for a number that was never registered on the provider side.
-      const apiInner = apiResponse?.api;
+      // What addNumber() returns is resp.data — the RAW provider HTTP response body:
+      //   { "msg": "Number already exists", "code": 400, "data": null, "success": false }
+      //
+      // Our code then WRAPS that into { ..., api: apiResponse } before storing in the DB,
+      // which is why the stored api_add_response looks nested. But here, apiResponse is flat.
+      //
+      // Bug that was here: checked apiResponse?.api (always undefined → detection never fired).
+      // Fix: check apiResponse.code and apiResponse.msg directly.
       const isAlreadyExists =
-        apiInner &&
-        (apiInner.code === 400 || apiInner.code === 409) &&
-        typeof apiInner.msg === 'string' &&
-        apiInner.msg.toLowerCase().includes('already exist');
+        apiResponse != null &&
+        !apiResponse.success &&                               // provider-level failure
+        (apiResponse.code === 400 || apiResponse.code === 409) &&
+        typeof apiResponse.msg === 'string' &&
+        apiResponse.msg.toLowerCase().includes('already exist');
 
       if (isAlreadyExists) {
         logger.warn('addNumber: provider says number already exists — cancelling activation immediately', {
           activationId,
           phone: phoneFull,
-          apiMsg: apiInner.msg,
+          apiMsg: apiResponse.msg,
         });
 
         // Delete the activation row — it was never truly registered
