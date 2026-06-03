@@ -355,6 +355,26 @@ async function handleSuccess(activation) {
     return;
   }
 
+  const [existingSuccess] = await query(
+    `SELECT id FROM activations WHERE phone_full = ? AND status = 'success' AND id != ? LIMIT 1`,
+    [activation.phone_full, activationId]
+  );
+
+  if (existingSuccess) {
+    await markActivation(activationId, 'failed');
+    await emitToUser(userId, 'activation:update', {
+      id: activationId,
+      status: 'failed',
+      message: 'This number has already been used. No balance was credited.',
+    });
+    logger.warn('Activation success blocked: number already used', {
+      activationId,
+      phone: activation.phone_full,
+      existingActivationId: existingSuccess.id,
+    });
+    return;
+  }
+
   const txRef = `act:reward:${activationId}`;
 
   try {

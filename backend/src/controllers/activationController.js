@@ -53,6 +53,21 @@ async function createActivation(req, res, next) {
       });
     }
 
+    const [existingUsed] = await query(
+      `SELECT id, user_id, status FROM activations
+       WHERE phone_full = $1 AND status IN ('pending','in_progress','otp_uploaded','success')
+       LIMIT 1`,
+      [phoneFull]
+    );
+
+    if (existingUsed) {
+      return res.status(409).json({
+        success: false,
+        message: 'This number is already in use and cannot be activated again',
+        activationId: existingUsed.id,
+      });
+    }
+
     // ── Cooldown check: reject if this number failed within the last 3 minutes ──
     const COOLDOWN_MS = 3 * 60 * 1000;
     const [cooldown] = await query(
