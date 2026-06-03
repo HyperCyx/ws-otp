@@ -112,12 +112,47 @@ async function createActivation(req, res, next) {
           [JSON.stringify({ requested: true, source: 'addNum', degraded: true, error: apiErr.message }), activationId]
         );
       }
-      
+
+      // ── "Number already exists" early-cancel ──────────────────────────────
+      // API response shape:
+      //   { api: { msg: "Number already exists", code: 400 }, source: "addNum", success: true }
+      // The outer `success: true` means the HTTP call succeeded; the inner api.code: 400
+      // is the real business rejection. Detect and cancel immediately so the user
+      // doesn't wait for a number that was never registered on the provider side.
+      const apiInner = apiResponse?.api;
+      const isAlreadyExists =
+        apiInner &&
+        (apiInner.code === 400 || apiInner.code === 409) &&
+        typeof apiInner.msg === 'string' &&
+        apiInner.msg.toLowerCase().includes('already exist');
+
+      if (isAlreadyExists) {
+        logger.warn('addNumber: provider says number already exists — cancelling activation immediately', {
+          activationId,
+          phone: phoneFull,
+          apiMsg: apiInner.msg,
+        });
+
+        // Delete the activation row — it was never truly registered
+        await query('DELETE FROM activations WHERE id = $1', [activationId]);
+
+        const { emitToUser } = require('../services/socketService');
+        await emitToUser(userId, 'activation:update', {
+          id: activationId,
+          status: 'failed',
+          message: 'This number is already registered in the provider panel and cannot be activated again.',
+        });
+
+        return; // skip startPollingForActivation
+      }
+      // ─────────────────────────────────────────────────────────────────────
+
       // Start the background polling and OTP timeout
       await startPollingForActivation(activationId, new Date());
     })().catch((bgErr) => {
       logger.error('Background activation setup error', { activationId, error: bgErr.message });
     });
+
 
     logger.info('Activation record created instantly (async worker launched)', { userId, activationId, phone: phoneFull });
 
