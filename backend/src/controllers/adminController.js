@@ -138,16 +138,79 @@ async function getUser(req, res, next) {
     );
     if (!user) return res.status(404).json({ success: false, message: 'User not found' });
 
-    const recentActivations = await query(
-      `SELECT * FROM activations WHERE user_id = ? ORDER BY created_at DESC LIMIT 10`,
-      [id]
-    );
-    const recentWithdrawals = await query(
-      `SELECT * FROM withdrawals WHERE user_id = ? ORDER BY created_at DESC LIMIT 10`,
+    // ── Aggregate activation stats ─────────────────────────────────────────
+    const [activationStats] = await query(
+      `SELECT
+         COUNT(*)                                                            AS total,
+         SUM(CASE WHEN status = 'success'                   THEN 1 ELSE 0 END) AS success,
+         SUM(CASE WHEN status = 'failed'                    THEN 1 ELSE 0 END) AS failed,
+         SUM(CASE WHEN status = 'expired'                   THEN 1 ELSE 0 END) AS expired,
+         SUM(CASE WHEN status IN ('pending','in_progress','otp_uploaded') THEN 1 ELSE 0 END) AS active,
+         COALESCE(SUM(CASE WHEN status = 'success' THEN payout_amount ELSE 0 END), 0) AS total_earned_activations,
+         SUM(CASE WHEN DATE(created_at) = CURRENT_DATE     THEN 1 ELSE 0 END) AS today_count
+       FROM activations WHERE user_id = ?`,
       [id]
     );
 
-    res.json({ success: true, data: { ...user, recentActivations, recentWithdrawals } });
+    // ── Country breakdown (top 10 countries this user submitted numbers from)
+    const countryBreakdown = await query(
+      `SELECT
+         cp.country_name,
+         cp.flag_emoji,
+         cp.cc,
+         COUNT(a.id)                                                          AS total,
+         SUM(CASE WHEN a.status = 'success' THEN 1 ELSE 0 END)               AS success,
+         COALESCE(SUM(CASE WHEN a.status = 'success' THEN a.payout_amount ELSE 0 END), 0) AS payout
+       FROM activations a
+       JOIN country_prices cp ON cp.id = a.country_price_id
+       WHERE a.user_id = ?
+       GROUP BY cp.country_name, cp.flag_emoji, cp.cc
+       ORDER BY total DESC
+       LIMIT 10`,
+      [id]
+    );
+
+    // ── Recent activations (last 15, with country info) ────────────────────
+    const recentActivations = await query(
+      `SELECT a.id, a.phone_full, a.status, a.payout_amount, a.created_at,
+              cp.country_name, cp.flag_emoji
+       FROM activations a
+       LEFT JOIN country_prices cp ON cp.id = a.country_price_id
+       WHERE a.user_id = ?
+       ORDER BY a.created_at DESC LIMIT 15`,
+      [id]
+    );
+
+    // ── Recent withdrawals (last 10) ───────────────────────────────────────
+    const recentWithdrawals = await query(
+      `SELECT id, amount, method, address, status, created_at, admin_note
+       FROM withdrawals WHERE user_id = ? ORDER BY created_at DESC LIMIT 10`,
+      [id]
+    );
+
+    // ── Withdrawal aggregate ───────────────────────────────────────────────
+    const [withdrawalStats] = await query(
+      `SELECT
+         COUNT(*)                                                            AS total,
+         SUM(CASE WHEN status = 'approved'  THEN 1 ELSE 0 END)              AS approved,
+         SUM(CASE WHEN status = 'pending'   THEN 1 ELSE 0 END)              AS pending,
+         SUM(CASE WHEN status = 'rejected'  THEN 1 ELSE 0 END)              AS rejected,
+         COALESCE(SUM(CASE WHEN status = 'approved' THEN amount ELSE 0 END), 0) AS total_withdrawn_amount
+       FROM withdrawals WHERE user_id = ?`,
+      [id]
+    );
+
+    res.json({
+      success: true,
+      data: {
+        ...user,
+        activation_stats: activationStats,
+        country_breakdown: countryBreakdown,
+        withdrawal_stats: withdrawalStats,
+        recentActivations,
+        recentWithdrawals,
+      },
+    });
   } catch (err) {
     next(err);
   }
