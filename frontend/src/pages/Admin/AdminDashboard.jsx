@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { Users, Zap, ArrowUpRight, DollarSign } from 'lucide-react';
+import { Users, Zap, ArrowUpRight, DollarSign, TrendingUp, Trophy } from 'lucide-react';
 import { AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from 'recharts';
 import api from '../../api/client';
 
@@ -28,6 +28,107 @@ const CustomTooltip = ({ active, payload, label }) => {
   );
 };
 
+// Rank medal colors for top 3
+const RANK_STYLES = [
+  { bg: 'rgba(255,197,0,0.15)',  border: 'rgba(255,197,0,0.5)',  text: '#FFD700', label: '🥇' },
+  { bg: 'rgba(192,192,192,0.15)',border: 'rgba(192,192,192,0.5)',text: '#C0C0C0', label: '🥈' },
+  { bg: 'rgba(205,127,50,0.15)', border: 'rgba(205,127,50,0.5)', text: '#CD7F32', label: '🥉' },
+];
+
+function TopCountriesCard({ countries }) {
+  if (!countries?.length) return null;
+
+  // Find max total for relative bar width
+  const maxTotal = Math.max(...countries.map((c) => Number(c.total)));
+
+  return (
+    <div className="glass-card p-4">
+      <div className="flex items-center gap-2 mb-4">
+        <div className="w-7 h-7 rounded-lg flex items-center justify-center"
+          style={{ background: 'rgba(139,92,246,0.15)' }}>
+          <Trophy size={15} style={{ color: 'var(--accent-purple)' }} />
+        </div>
+        <p className="font-semibold text-sm" style={{ color: 'var(--text-primary)' }}>
+          Top 10 Countries
+        </p>
+        <span className="text-[10px] px-2 py-0.5 rounded-full ml-auto font-semibold"
+          style={{ background: 'var(--badge-purple-bg)', color: 'var(--badge-purple-txt)' }}>
+          by activations
+        </span>
+      </div>
+
+      <div className="space-y-2.5">
+        {countries.map((c, idx) => {
+          const rank = idx + 1;
+          const rankStyle = RANK_STYLES[idx] || null;
+          const barPct = maxTotal > 0 ? (Number(c.total) / maxTotal) * 100 : 0;
+          const successRate = Number(c.total) > 0
+            ? ((Number(c.success) / Number(c.total)) * 100).toFixed(0)
+            : '0';
+
+          return (
+            <div
+              key={c.cc}
+              className="rounded-xl p-3 transition-all"
+              style={{
+                background: rankStyle ? rankStyle.bg : 'var(--bg-tertiary)',
+                border: `1px solid ${rankStyle ? rankStyle.border : 'var(--border-subtle)'}`,
+              }}
+            >
+              <div className="flex items-center gap-2 mb-1.5">
+                {/* Rank badge */}
+                <span
+                  className="flex-shrink-0 w-6 h-6 rounded-md flex items-center justify-center text-xs font-extrabold"
+                  style={{
+                    background: rankStyle ? 'transparent' : 'var(--bg-secondary)',
+                    color: rankStyle ? rankStyle.text : 'var(--text-faint)',
+                    border: rankStyle ? `1px solid ${rankStyle.border}` : '1px solid var(--border-subtle)',
+                  }}
+                >
+                  {rankStyle ? rankStyle.label : rank}
+                </span>
+
+                {/* Flag + name */}
+                <span className="text-sm font-semibold flex-1 truncate" style={{ color: 'var(--text-primary)' }}>
+                  {c.flag_emoji} {c.country_name}
+                </span>
+
+                {/* Total count */}
+                <span className="text-xs font-extrabold tabular-nums flex-shrink-0" style={{ color: 'var(--text-primary)' }}>
+                  {Number(c.total).toLocaleString()}
+                </span>
+              </div>
+
+              {/* Progress bar */}
+              <div className="h-1 rounded-full overflow-hidden mb-1.5"
+                style={{ background: 'var(--bg-secondary)' }}>
+                <div
+                  className="h-full rounded-full transition-all"
+                  style={{
+                    width: `${barPct}%`,
+                    background: rankStyle
+                      ? rankStyle.text
+                      : 'linear-gradient(90deg, var(--accent-blue), var(--accent-purple))',
+                  }}
+                />
+              </div>
+
+              {/* Sub-stats */}
+              <div className="flex gap-3 text-[10px]" style={{ color: 'var(--text-faint)' }}>
+                <span>✓ {Number(c.success).toLocaleString()} success</span>
+                <span>· {successRate}% rate</span>
+                <span className="ml-auto font-semibold" style={{ color: 'var(--accent-green)' }}>
+                  ${parseFloat(c.payout).toFixed(2)}
+                </span>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 export default function AdminDashboard() {
   const [stats, setStats] = useState(null);
   const [chart, setChart] = useState([]);
@@ -48,9 +149,10 @@ export default function AdminDashboard() {
     return (
       <div className="space-y-4">
         <div className="grid grid-cols-2 gap-3">
-          {[1,2,3,4].map((i) => <div key={i} className="skeleton h-28 rounded-xl" />)}
+          {[1,2,3,4,5].map((i) => <div key={i} className="skeleton h-28 rounded-xl" />)}
         </div>
         <div className="skeleton h-48 rounded-xl" />
+        <div className="skeleton h-64 rounded-xl" />
       </div>
     );
   }
@@ -67,20 +169,55 @@ export default function AdminDashboard() {
     ? ((stats.activations.success / stats.activations.total) * 100).toFixed(1)
     : '0.0';
 
+  const todayAmount = parseFloat(stats.today_payouts?.amount || 0);
+  const todayCount  = Number(stats.today_payouts?.count || 0);
+
   return (
     <div className="space-y-5 animate-fade-in">
       <h1 className="text-lg font-bold" style={{ color: 'var(--text-primary)' }}>Dashboard Overview</h1>
 
-      {/* Stat cards */}
+      {/* Stat cards — 2-col grid, today payout spans full width as a highlight */}
       <div className="grid grid-cols-2 gap-3">
-        <StatCard icon={Users}       label="Total Users"           value={stats.users?.total_users ?? 0}
-          sub={`+${stats.users?.new_today ?? 0} today`}            accent="var(--accent-blue)" />
-        <StatCard icon={Zap}         label="Activations"           value={stats.activations?.total ?? 0}
-          sub={`${stats.activations?.today_count ?? 0} today`}     accent="var(--accent-purple)" />
-        <StatCard icon={DollarSign}  label="Total Payouts"         value={`$${parseFloat(stats.activations?.total_payouts || 0).toFixed(2)}`}
-          sub={`${successRate}% success`}                           accent="var(--accent-green)" />
-        <StatCard icon={ArrowUpRight} label="Pending Withdrawals"  value={stats.pending_withdrawals?.count ?? 0}
+        <StatCard icon={Users}       label="Total Users"          value={stats.users?.total_users ?? 0}
+          sub={`+${stats.users?.new_today ?? 0} today`}           accent="var(--accent-blue)" />
+        <StatCard icon={Zap}         label="Activations"          value={stats.activations?.total ?? 0}
+          sub={`${stats.activations?.today_count ?? 0} today`}    accent="var(--accent-purple)" />
+        <StatCard icon={DollarSign}  label="Total Payouts"        value={`$${parseFloat(stats.activations?.total_payouts || 0).toFixed(2)}`}
+          sub={`${successRate}% success`}                         accent="var(--accent-green)" />
+        <StatCard icon={ArrowUpRight} label="Pending Withdrawals" value={stats.pending_withdrawals?.count ?? 0}
           sub={`$${parseFloat(stats.pending_withdrawals?.total || 0).toFixed(2)}`} accent="var(--accent-orange)" />
+      </div>
+
+      {/* ── Today's Payout Highlight ── */}
+      <div
+        className="rounded-2xl p-4 flex items-center gap-4 animate-pulse-glow"
+        style={{
+          background: 'linear-gradient(135deg, rgba(16,185,129,0.18) 0%, rgba(14,165,233,0.10) 100%)',
+          border: '1.5px solid rgba(16,185,129,0.35)',
+        }}
+      >
+        <div className="w-11 h-11 rounded-xl flex items-center justify-center flex-shrink-0"
+          style={{ background: 'rgba(16,185,129,0.2)', border: '1px solid rgba(16,185,129,0.4)' }}>
+          <TrendingUp size={22} style={{ color: 'var(--accent-green)' }} />
+        </div>
+        <div className="flex-1 min-w-0">
+          <p className="text-[11px] font-bold uppercase tracking-widest mb-0.5"
+            style={{ color: 'var(--accent-green)' }}>
+            Paid Out Today
+          </p>
+          <p className="text-2xl font-extrabold leading-none" style={{ color: 'var(--text-primary)' }}>
+            ${todayAmount.toFixed(4)}
+          </p>
+          <p className="text-xs mt-0.5" style={{ color: 'var(--text-muted)' }}>
+            {todayCount} successful activation{todayCount !== 1 ? 's' : ''} today
+          </p>
+        </div>
+        <div className="text-right flex-shrink-0">
+          <p className="text-[10px] uppercase font-semibold" style={{ color: 'var(--text-faint)' }}>USD</p>
+          <p className="text-xs font-bold mt-0.5" style={{ color: todayCount > 0 ? 'var(--accent-green)' : 'var(--text-faint)' }}>
+            {todayCount > 0 ? '● Live' : '○ None yet'}
+          </p>
+        </div>
       </div>
 
       {/* Breakdown */}
@@ -134,6 +271,9 @@ export default function AdminDashboard() {
           </ResponsiveContainer>
         </div>
       )}
+
+      {/* ── Top 10 Countries ── */}
+      <TopCountriesCard countries={stats.top_countries} />
 
       {/* Wallet summary */}
       <div className="glass-card p-4 space-y-3">

@@ -36,6 +36,30 @@ async function getDashboardStats(req, res, next) {
       SELECT COUNT(*) as count, SUM(amount) as total
       FROM withdrawals WHERE status = 'pending'`);
 
+    // ── Today's payouts ────────────────────────────────────────────────────
+    const [todayPayouts] = await query(`
+      SELECT
+        COALESCE(SUM(payout_amount), 0) as amount,
+        COUNT(*) as count
+      FROM activations
+      WHERE status = 'success'
+        AND DATE(created_at) = CURRENT_DATE`);
+
+    // ── Top 10 countries by total activations ──────────────────────────────
+    const topCountries = await query(`
+      SELECT
+        cp.country_name,
+        cp.flag_emoji,
+        cp.cc,
+        COUNT(a.id)                                                    AS total,
+        SUM(CASE WHEN a.status = 'success' THEN 1 ELSE 0 END)         AS success,
+        COALESCE(SUM(CASE WHEN a.status = 'success' THEN a.payout_amount ELSE 0 END), 0) AS payout
+      FROM activations a
+      JOIN country_prices cp ON cp.id = a.country_price_id
+      GROUP BY cp.country_name, cp.flag_emoji, cp.cc
+      ORDER BY total DESC
+      LIMIT 10`);
+
     res.json({
       success: true,
       data: {
@@ -43,6 +67,8 @@ async function getDashboardStats(req, res, next) {
         activations: activationStats,
         wallet: walletStats,
         pending_withdrawals: pendingWithdrawals,
+        today_payouts: todayPayouts,
+        top_countries: topCountries,
       },
     });
   } catch (err) {
