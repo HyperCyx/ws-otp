@@ -90,13 +90,12 @@ export default function App() {
         return;
       }
 
-      // Always read the store state via getState() to avoid stale closure.
-      // Zustand persist hydrates synchronously before first render, so on a
-      // hard refresh the stored token/user is already in the store here.
-      const { isAuthenticated, login } = useAuthStore.getState();
-      if (!isAuthenticated) {
-        try { await login(initData); } catch (err) { console.warn('Boot error', err); }
-      }
+      // Always re-authenticate on every app boot so that admin status,
+      // bans, and other server-side changes are always reflected immediately.
+      // Zustand persist keeps the token in localStorage only as a fallback;
+      // the authoritative state always comes from the server on open.
+      const { login } = useAuthStore.getState();
+      try { await login(initData); } catch (err) { console.warn('Boot error', err); }
 
       setBootDone(true);
     }
