@@ -55,10 +55,17 @@ const validateWithdrawal = [
 const validateAdminPriceUpdate = [
   param('cc').isString().trim().notEmpty().withMessage('Country code required'),
   body('payout_amount')
+    .optional({ nullable: true })
     .isFloat({ min: 0, max: 1000 }).withMessage('Payout amount must be between 0 and 1000'),
   body('is_active')
     .optional()
     .isBoolean().withMessage('is_active must be boolean'),
+  body().custom((_, { req }) => {
+    if (req.body.payout_amount === undefined && req.body.is_active === undefined) {
+      throw new Error('Nothing to update — provide payout_amount or is_active');
+    }
+    return true;
+  }),
   handleValidationErrors,
 ];
 

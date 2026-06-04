@@ -33,11 +33,26 @@ export default function AdminPricing() {
     } finally { setSaving(null); }
   }
 
-  function toggle(cc) {
+  async function toggle(cc) {
+    const newActive = !editing[cc]?.is_active;
     setEditing((prev) => ({
       ...prev,
-      [cc]: { ...prev[cc], is_active: !prev[cc]?.is_active },
+      [cc]: { ...prev[cc], is_active: newActive },
     }));
+    // Auto-save the active toggle immediately so it sticks
+    setSaving(cc);
+    try {
+      await api.patch(`/admin/prices/${cc}`, { is_active: newActive });
+      setPrices((prev) => prev.map((p) => p.cc === cc ? { ...p, is_active: newActive } : p));
+      toast.success(`+${cc} ${newActive ? 'enabled' : 'disabled'}`);
+    } catch (err) {
+      // Revert the toggle on failure
+      setEditing((prev) => ({
+        ...prev,
+        [cc]: { ...prev[cc], is_active: !newActive },
+      }));
+      toast.error(err.response?.data?.message || 'Failed to update');
+    } finally { setSaving(null); }
   }
 
   return (
@@ -73,7 +88,7 @@ export default function AdminPricing() {
                     <span className="text-sm font-bold" style={{ color: 'var(--text-muted)' }}>$</span>
                     <input type="number" step="0.01" min="0"
                       className="form-input w-20 py-1.5 px-2 text-sm text-right font-bold"
-                      value={ed.payout_amount || ''}
+                      value={ed.payout_amount ?? ''}
                       onChange={(e) => setEditing((prev) => ({
                         ...prev,
                         [p.cc]: { ...prev[p.cc], payout_amount: e.target.value },
