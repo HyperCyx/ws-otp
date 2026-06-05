@@ -1,5 +1,5 @@
-import React, { useEffect, useState } from 'react';
-import { Users, Zap, ArrowUpRight, DollarSign, TrendingUp, Trophy } from 'lucide-react';
+import React, { useEffect, useState, useCallback } from 'react';
+import { Users, Zap, ArrowUpRight, DollarSign, TrendingUp, Trophy, RefreshCw } from 'lucide-react';
 import { AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from 'recharts';
 import api from '../../api/client';
 
@@ -300,19 +300,38 @@ export default function AdminDashboard() {
   const [chart, setChart] = useState([]);
   const [wdStats, setWdStats] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+  const [lastUpdated, setLastUpdated] = useState(null);
 
-  useEffect(() => {
-    Promise.all([
-      api.get('/admin/stats'),
-      api.get('/admin/revenue?days=7'),
-      api.get('/admin/withdrawal-stats'),
-    ]).then(([s, r, w]) => {
+  const fetchData = useCallback(async (silent = false) => {
+    if (!silent) setLoading(true);
+    else setRefreshing(true);
+    try {
+      const [s, r, w] = await Promise.all([
+        api.get('/admin/stats'),
+        api.get('/admin/revenue?days=7'),
+        api.get('/admin/withdrawal-stats'),
+      ]);
       setStats(s.data?.data || null);
       setChart(Array.isArray(r.data?.data) ? r.data.data : []);
       setWdStats(w.data?.data || null);
+      setLastUpdated(new Date());
+    } catch {
+      // keep previous data on error during silent refresh
+    } finally {
       setLoading(false);
-    }).catch(() => setLoading(false));
+      setRefreshing(false);
+    }
   }, []);
+
+  // Initial load
+  useEffect(() => { fetchData(false); }, [fetchData]);
+
+  // Auto-refresh every 60 seconds
+  useEffect(() => {
+    const id = setInterval(() => fetchData(true), 60_000);
+    return () => clearInterval(id);
+  }, [fetchData]);
 
   if (loading) {
     return (
@@ -343,7 +362,32 @@ export default function AdminDashboard() {
 
   return (
     <div className="space-y-5 animate-fade-in">
-      <h1 className="text-lg font-bold" style={{ color: 'var(--text-primary)' }}>Dashboard Overview</h1>
+      {/* Header with refresh */}
+      <div className="flex items-center justify-between">
+        <h1 className="text-lg font-bold" style={{ color: 'var(--text-primary)' }}>Dashboard Overview</h1>
+        <div className="flex items-center gap-2">
+          {lastUpdated && (
+            <p className="text-[10px] tabular-nums" style={{ color: 'var(--text-faint)' }}>
+              {lastUpdated.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
+            </p>
+          )}
+          <button
+            id="dashboard-refresh-btn"
+            onClick={() => fetchData(true)}
+            disabled={refreshing || loading}
+            className="w-8 h-8 rounded-xl flex items-center justify-center transition-all"
+            style={{
+              background: 'var(--bg-tertiary)',
+              border: '1px solid var(--border-subtle)',
+              color: refreshing ? 'var(--accent-blue)' : 'var(--text-muted)',
+              opacity: loading ? 0.4 : 1,
+            }}
+            aria-label="Refresh dashboard"
+          >
+            <RefreshCw size={14} className={refreshing ? 'animate-spin' : ''} />
+          </button>
+        </div>
+      </div>
 
       <div className="grid grid-cols-2 gap-3">
         <StatCard icon={Users}       label="Total Users"          value={stats.users?.total_users ?? 0}

@@ -96,11 +96,12 @@ app.get('/health', (req, res) => {
 // Blocks all non-admin authenticated requests when maintenance_mode = '1'.
 // Admin routes (/api/admin) and the auth endpoint (/api/auth) are always allowed.
 async function maintenanceGuard(req, res, next) {
-  // Always pass through: admin routes, auth, health
+  // Always pass through: admin routes, auth, settings (needed to detect maintenance on client), health
   if (
     req.path.startsWith('/api/admin') ||
     req.path.startsWith('/api/auth') ||
     req.path.startsWith('/api/telegram') ||
+    req.path === '/api/settings' ||
     req.path === '/health'
   ) {
     return next();

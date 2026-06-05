@@ -27,7 +27,13 @@ export function LangProvider({ children }) {
         }
         setMaintenanceMode(s.maintenance_mode === '1');
       })
-      .catch(() => {})
+      .catch((err) => {
+        // If the server itself is in maintenance and somehow the settings
+        // endpoint was blocked, still activate the maintenance UI.
+        if (err?.response?.status === 503 && err?.response?.data?.maintenance) {
+          setMaintenanceMode(true);
+        }
+      })
       .finally(() => setSettingsLoaded(true));
   }, []);
 
