@@ -131,7 +131,34 @@ function TopCountriesCard({ countries }) {
 
 // ── Withdrawal Stats Section ───────────────────────────────────────────────
 function WithdrawalStatsSection({ wdStats }) {
-  const [detailView, setDetailView] = useState('yesterday'); // 'yesterday' | '7days'
+  const [detailView, setDetailView] = useState('yesterday'); // 'yesterday' | '7days' | 'custom'
+  const [customDate, setCustomDate] = useState(() => {
+    const d = new Date();
+    return d.toISOString().split('T')[0]; // YYYY-MM-DD
+  });
+  const [customData, setCustomData] = useState(null);
+  const [loadingCustom, setLoadingCustom] = useState(false);
+
+  const fetchCustomData = useCallback(async (dateStr) => {
+    if (!dateStr) return;
+    setLoadingCustom(true);
+    try {
+      const { data } = await api.get(`/admin/withdrawal-stats?date=${dateStr}`);
+      if (data?.success && data?.data?.custom) {
+        setCustomData(data.data.custom);
+      }
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setLoadingCustom(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (detailView === 'custom' && customDate) {
+      fetchCustomData(customDate);
+    }
+  }, [detailView, customDate, fetchCustomData]);
 
   if (!wdStats) return null;
 
@@ -140,10 +167,23 @@ function WithdrawalStatsSection({ wdStats }) {
   const totalAmt  = parseFloat(wdStats.total?.amount   || 0);
   const totalCnt  = Number(wdStats.total?.count        || 0);
 
-  const detailData  = detailView === 'yesterday' ? wdStats.yesterday : wdStats.seven_days;
-  const detailAmt   = parseFloat(detailData?.amount || 0);
-  const detailCnt   = Number(detailData?.count       || 0);
-  const detailLabel = detailView === 'yesterday' ? 'Yesterday' : 'Last 7 Days';
+  let detailAmt = 0;
+  let detailCnt = 0;
+  let detailLabel = '';
+
+  if (detailView === 'yesterday') {
+    detailAmt = parseFloat(wdStats.yesterday?.amount || 0);
+    detailCnt = Number(wdStats.yesterday?.count || 0);
+    detailLabel = 'Yesterday';
+  } else if (detailView === '7days') {
+    detailAmt = parseFloat(wdStats.seven_days?.amount || 0);
+    detailCnt = Number(wdStats.seven_days?.count || 0);
+    detailLabel = 'Last 7 Days';
+  } else if (detailView === 'custom') {
+    detailAmt = parseFloat(customData?.amount || 0);
+    detailCnt = Number(customData?.count || 0);
+    detailLabel = `On ${customDate}`;
+  }
 
   return (
     <div className="space-y-3">
@@ -224,6 +264,7 @@ function WithdrawalStatsSection({ wdStats }) {
           {[
             { key: 'yesterday', label: 'Yesterday' },
             { key: '7days',     label: 'Last 7 Days' },
+            { key: 'custom',    label: 'Custom Date' },
           ].map(({ key, label }) => (
             <button
               key={key}
@@ -240,9 +281,26 @@ function WithdrawalStatsSection({ wdStats }) {
           ))}
         </div>
 
+        {/* Custom date input */}
+        {detailView === 'custom' && (
+          <div className="mb-4">
+            <input
+              type="date"
+              value={customDate}
+              onChange={(e) => setCustomDate(e.target.value)}
+              className="form-input text-xs font-semibold"
+              style={{
+                background: 'var(--bg-tertiary)',
+                color: 'var(--text-primary)',
+                border: '1px solid var(--border-subtle)',
+              }}
+            />
+          </div>
+        )}
+
         {/* Detail figures */}
         <div className="flex items-center justify-between">
-          <div>
+          <div className={loadingCustom && detailView === 'custom' ? 'opacity-40 transition-opacity' : 'transition-opacity'}>
             <p className="text-[10px] uppercase font-semibold tracking-wider mb-0.5" style={{ color: 'var(--text-faint)' }}>
               {detailLabel}
             </p>
@@ -257,13 +315,29 @@ function WithdrawalStatsSection({ wdStats }) {
           <div
             className="w-14 h-14 rounded-2xl flex items-center justify-center flex-shrink-0"
             style={{
-              background: detailView === 'yesterday' ? 'rgba(14,165,233,0.15)' : 'rgba(16,185,129,0.15)',
-              border: `1px solid ${detailView === 'yesterday' ? 'rgba(14,165,233,0.35)' : 'rgba(16,185,129,0.35)'}`,
+              background: detailView === 'yesterday'
+                ? 'rgba(14,165,233,0.15)'
+                : detailView === '7days'
+                  ? 'rgba(16,185,129,0.15)'
+                  : 'rgba(139,92,246,0.15)',
+              border: `1px solid ${
+                detailView === 'yesterday'
+                  ? 'rgba(14,165,233,0.35)'
+                  : detailView === '7days'
+                    ? 'rgba(16,185,129,0.35)'
+                    : 'rgba(139,92,246,0.35)'
+              }`,
             }}
           >
             <DollarSign
               size={26}
-              style={{ color: detailView === 'yesterday' ? 'var(--accent-blue)' : 'var(--accent-green)' }}
+              style={{
+                color: detailView === 'yesterday'
+                  ? 'var(--accent-blue)'
+                  : detailView === '7days'
+                    ? 'var(--accent-green)'
+                    : 'var(--accent-purple)'
+              }}
             />
           </div>
         </div>
@@ -284,7 +358,9 @@ function WithdrawalStatsSection({ wdStats }) {
                   width: `${Math.min(100, (detailAmt / totalAmt) * 100)}%`,
                   background: detailView === 'yesterday'
                     ? 'linear-gradient(90deg, var(--accent-blue), var(--accent-purple))'
-                    : 'linear-gradient(90deg, var(--accent-green), var(--accent-blue))',
+                    : detailView === '7days'
+                      ? 'linear-gradient(90deg, var(--accent-green), var(--accent-blue))'
+                      : 'linear-gradient(90deg, var(--accent-purple), var(--accent-blue))',
                 }}
               />
             </div>

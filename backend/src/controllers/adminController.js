@@ -376,6 +376,8 @@ async function deleteActivation(req, res, next) {
 
 async function getWithdrawalStats(req, res, next) {
   try {
+    const { date } = req.query;
+
     // Today's approved withdrawals
     const [todayStats] = await query(`
       SELECT
@@ -411,6 +413,23 @@ async function getWithdrawalStats(req, res, next) {
       WHERE status = 'approved'
         AND updated_at >= CURRENT_DATE - INTERVAL '7 days'`);
 
+    // Custom date stats (optional)
+    let customStats = null;
+    if (date && typeof date === 'string' && date.trim().length > 0) {
+      const [customRow] = await query(`
+        SELECT
+          COALESCE(SUM(amount), 0) AS amount,
+          COUNT(*) AS count
+        FROM withdrawals
+        WHERE status = 'approved'
+          AND DATE(updated_at) = ?`, [date.trim()]);
+      customStats = {
+        date: date.trim(),
+        amount: customRow.amount,
+        count: customRow.count,
+      };
+    }
+
     res.json({
       success: true,
       data: {
@@ -418,12 +437,14 @@ async function getWithdrawalStats(req, res, next) {
         total:      totalStats,
         yesterday:  yesterdayStats,
         seven_days: sevenDayStats,
+        custom:     customStats,
       },
     });
   } catch (err) {
     next(err);
   }
 }
+
 
 async function listWithdrawals(req, res, next) {
   const page = Math.max(1, parseInt(req.query.page || '1'));
