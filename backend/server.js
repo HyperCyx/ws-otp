@@ -92,6 +92,50 @@ app.get('/health', (req, res) => {
   });
 });
 
+// ── Maintenance Mode Guard ─────────────────────────────────────────────────
+// Blocks all non-admin authenticated requests when maintenance_mode = '1'.
+// Admin routes (/api/admin) and the auth endpoint (/api/auth) are always allowed.
+async function maintenanceGuard(req, res, next) {
+  // Always pass through: admin routes, auth, health
+  if (
+    req.path.startsWith('/api/admin') ||
+    req.path.startsWith('/api/auth') ||
+    req.path.startsWith('/api/telegram') ||
+    req.path === '/health'
+  ) {
+    return next();
+  }
+
+  try {
+    const { query: dbQuery } = require('./src/config/database');
+    const [row] = await dbQuery(
+      `SELECT value FROM app_settings WHERE key = 'maintenance_mode'`
+    );
+    if (row?.value === '1') {
+      // Admins can still pass through even on non-admin routes
+      // (they may already have a JWT — check it quickly)
+      const authHeader = req.headers.authorization;
+      if (authHeader && authHeader.startsWith('Bearer ')) {
+        try {
+          const jwt = require('jsonwebtoken');
+          const payload = jwt.verify(authHeader.slice(7), process.env.JWT_SECRET);
+          if (payload.isAdmin) return next();
+        } catch { /* token invalid — fall through to maintenance block */ }
+      }
+      return res.status(503).json({
+        success: false,
+        maintenance: true,
+        message: 'The platform is currently under maintenance. Please check back soon.',
+      });
+    }
+  } catch (err) {
+    // If the DB check fails, don't block the request — fail open
+  }
+  next();
+}
+
+app.use(maintenanceGuard);
+
 // ── API Routes ─────────────────────────────────────────────────────────────
 app.use('/api/auth', authRoutes);
 app.use('/api/activations', activationRoutes);
@@ -101,11 +145,11 @@ app.use('/api/countries', countryRoutes);
 app.use('/api/admin', adminRoutes);
 app.use('/api/telegram', telegramRoutes);
 
-// ── Public settings (language, min withdrawal, startup message) ────────────
+// ── Public settings (language, min withdrawal, startup message, maintenance) ─
 app.get('/api/settings', require('./src/middleware/auth').requireAuth, async (req, res, next) => {
   try {
     const { query: dbQuery } = require('./src/config/database');
-    const rows = await dbQuery(`SELECT key, value FROM app_settings WHERE key IN ('default_language','min_withdrawal_amount','startup_message','startup_message_enabled')`);
+    const rows = await dbQuery(`SELECT key, value FROM app_settings WHERE key IN ('default_language','min_withdrawal_amount','startup_message','startup_message_enabled','maintenance_mode')`);
     const result = {};
     rows.forEach((r) => { result[r.key] = r.value; });
     res.json({ success: true, data: result });

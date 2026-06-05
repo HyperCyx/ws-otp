@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { Loader2, Save, Globe, DollarSign, MessageSquare, Send, Bell, AlertCircle } from 'lucide-react';
+import { Loader2, Save, Globe, DollarSign, MessageSquare, Send, Bell, AlertCircle, ShieldAlert } from 'lucide-react';
 import toast from 'react-hot-toast';
 import api from '../../api/client';
 import { useLang } from '../../context/LangContext';
@@ -12,6 +12,7 @@ export default function AdminSettings() {
     startup_message: '',
     bot_welcome_message: '',
     startup_message_enabled: '1',
+    maintenance_mode: '0',
   });
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState({});
@@ -54,6 +55,13 @@ export default function AdminSettings() {
   return (
     <div className="space-y-5 animate-fade-in max-w-sm">
       <h1 className="text-lg font-bold" style={{ color: 'var(--text-primary)' }}>System Settings & Broadcasts</h1>
+
+      {/* ── Maintenance Mode ── */}
+      <MaintenanceModeCard
+        enabled={settings.maintenance_mode !== '0'}
+        saving={!!saving['maintenance_mode']}
+        onToggle={(val) => saveSetting('maintenance_mode', val ? '1' : '0')}
+      />
 
       {/* ── Default Language ── */}
       <div className="glass-card p-5 space-y-4">
@@ -364,6 +372,128 @@ function BroadcastCard() {
           {sending ? 'Broadcasting…' : awaitingConfirm ? 'Tap again to confirm broadcast' : 'Send Broadcast to All Users'}
         </button>
       </form>
+    </div>
+  );
+}
+
+function MaintenanceModeCard({ enabled, saving, onToggle }) {
+  const [awaitingConfirm, setAwaitingConfirm] = useState(false);
+
+  function handleToggle() {
+    if (saving) return;
+    if (!enabled && !awaitingConfirm) {
+      setAwaitingConfirm(true);
+      return;
+    }
+    setAwaitingConfirm(false);
+    onToggle(!enabled);
+  }
+
+  return (
+    <div
+      className="glass-card p-5"
+      style={{
+        borderColor: enabled ? 'rgba(239,68,68,0.5)' : 'rgba(251,146,60,0.3)',
+        background: enabled
+          ? 'linear-gradient(135deg, rgba(239,68,68,0.08) 0%, rgba(251,146,60,0.05) 100%)'
+          : undefined,
+      }}
+    >
+      <div className="flex items-start justify-between gap-4">
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-2 mb-1">
+            <ShieldAlert size={16} style={{ color: enabled ? 'var(--accent-red)' : 'var(--accent-orange)' }} />
+            <p className="font-semibold text-sm" style={{ color: 'var(--text-primary)' }}>
+              Maintenance Mode
+            </p>
+            <span
+              className="text-[10px] font-bold px-2 py-0.5 rounded-full ml-1"
+              style={{
+                background: enabled ? 'rgba(239,68,68,0.15)' : 'var(--bg-tertiary)',
+                color: enabled ? 'var(--accent-red)' : 'var(--text-faint)',
+                border: `1px solid ${enabled ? 'rgba(239,68,68,0.4)' : 'var(--border-subtle)'}`,
+                transition: 'all 0.25s',
+              }}
+            >
+              {enabled ? 'ON' : 'OFF'}
+            </span>
+          </div>
+          <p className="text-xs" style={{ color: 'var(--text-muted)' }}>
+            {enabled
+              ? 'Site is under maintenance. Regular users are blocked \u2014 you (admin) can still access everything normally.'
+              : 'When enabled, all regular users will see a maintenance page and be blocked from the app until you turn this off.'}
+          </p>
+
+          {awaitingConfirm && (
+            <div
+              className="flex items-center gap-2 mt-3 p-2.5 rounded-xl animate-slide-up"
+              style={{ background: 'rgba(239,68,68,0.12)', border: '1.5px solid rgba(239,68,68,0.4)' }}
+            >
+              <AlertCircle size={13} style={{ color: 'var(--accent-red)' }} className="flex-shrink-0" />
+              <p className="text-xs flex-1" style={{ color: 'var(--accent-red)' }}>
+                This will immediately block all users. Tap the toggle again to confirm.
+              </p>
+              <button
+                type="button"
+                onClick={() => setAwaitingConfirm(false)}
+                className="text-xs px-2 py-1 rounded-lg flex-shrink-0"
+                style={{ background: 'var(--bg-tertiary)', color: 'var(--text-muted)', border: '1px solid var(--border-subtle)' }}
+              >
+                Cancel
+              </button>
+            </div>
+          )}
+        </div>
+
+        {/* Pill toggle */}
+        <button
+          type="button"
+          onClick={handleToggle}
+          disabled={saving}
+          aria-pressed={enabled}
+          aria-label="Toggle maintenance mode"
+          style={{
+            width: 52,
+            height: 28,
+            borderRadius: 999,
+            background: enabled ? 'var(--accent-red)' : 'var(--bg-tertiary)',
+            border: `2px solid ${enabled ? 'var(--accent-red)' : 'var(--border-subtle)'}`,
+            position: 'relative',
+            cursor: saving ? 'not-allowed' : 'pointer',
+            transition: 'background 0.25s, border-color 0.25s',
+            opacity: saving ? 0.6 : 1,
+            flexShrink: 0,
+          }}
+        >
+          {saving ? (
+            <Loader2
+              size={14}
+              className="animate-spin"
+              style={{
+                position: 'absolute',
+                top: '50%',
+                left: '50%',
+                transform: 'translate(-50%, -50%)',
+                color: enabled ? '#fff' : 'var(--text-muted)',
+              }}
+            />
+          ) : (
+            <span
+              style={{
+                position: 'absolute',
+                top: 3,
+                left: enabled ? 26 : 3,
+                width: 18,
+                height: 18,
+                borderRadius: '50%',
+                background: '#fff',
+                boxShadow: '0 1px 4px rgba(0,0,0,0.25)',
+                transition: 'left 0.22s cubic-bezier(.4,0,.2,1)',
+              }}
+            />
+          )}
+        </button>
+      </div>
     </div>
   );
 }

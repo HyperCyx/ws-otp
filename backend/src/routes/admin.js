@@ -15,6 +15,7 @@ router.use(requireAuth, requireAdmin);
 // ── Dashboard Stats ────────────────────────────────────────────────────────
 router.get('/stats', adminController.getDashboardStats);
 router.get('/revenue', adminController.getRevenueChart);
+router.get('/withdrawal-stats', adminController.getWithdrawalStats);
 
 // ── User Management ────────────────────────────────────────────────────────
 router.get('/users', adminController.listUsers);

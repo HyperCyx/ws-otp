@@ -3,7 +3,7 @@ import { HashRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { Toaster } from 'react-hot-toast';
 import { useAuthStore } from './store/authStore';
 import { useThemeStore } from './store/themeStore';
-import { LangProvider } from './context/LangContext';
+import { LangProvider, useLang } from './context/LangContext';
 import Layout from './components/Layout';
 import NotInTelegram from './components/NotInTelegram';
 import HomePage from './pages/HomePage';
@@ -21,6 +21,7 @@ import AdminCredentials from './pages/Admin/AdminCredentials';
 import AdminLogs from './pages/Admin/AdminLogs';
 import AdminSettings from './pages/Admin/AdminSettings';
 import LoadingScreen from './components/LoadingScreen';
+import MaintenancePage from './pages/MaintenancePage';
 
 /**
  * Route guard — only rendered after bootDone is true, so the persisted
@@ -34,6 +35,15 @@ function ProtectedAdmin({ children }) {
 }
 
 function AppInner() {
+  const { maintenanceMode } = useLang();
+  const user = useAuthStore((s) => s.user);
+
+  // Non-admin users see the maintenance page when the setting is active.
+  // Admins always have full access so they can turn maintenance off again.
+  if (maintenanceMode && !user?.isAdmin) {
+    return <MaintenancePage />;
+  }
+
   return (
     <Routes>
       <Route element={<Layout />}>

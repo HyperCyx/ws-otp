@@ -8,6 +8,7 @@ export function LangProvider({ children }) {
   const [lang, setLangState] = useState(() => localStorage.getItem('lang') || 'en');
   const [minWithdrawal, setMinWithdrawal] = useState(1);
   const [startupMessage, setStartupMessage] = useState('');
+  const [maintenanceMode, setMaintenanceMode] = useState(false);
   const [settingsLoaded, setSettingsLoaded] = useState(false);
 
   const refreshSettings = useCallback(() => {
@@ -24,6 +25,7 @@ export function LangProvider({ children }) {
           const enabled = s.startup_message_enabled !== '0';
           setStartupMessage(enabled ? (s.startup_message || '') : '');
         }
+        setMaintenanceMode(s.maintenance_mode === '1');
       })
       .catch(() => {})
       .finally(() => setSettingsLoaded(true));
@@ -45,7 +47,7 @@ export function LangProvider({ children }) {
   }, [lang]);
 
   return (
-    <LangContext.Provider value={{ lang, setLang, t, minWithdrawal, startupMessage, settingsLoaded, refreshSettings }}>
+    <LangContext.Provider value={{ lang, setLang, t, minWithdrawal, startupMessage, maintenanceMode, settingsLoaded, refreshSettings }}>
       {children}
     </LangContext.Provider>
   );

@@ -373,6 +373,57 @@ async function deleteActivation(req, res, next) {
   }
 }
 
+async function getWithdrawalStats(req, res, next) {
+  try {
+    // Today's approved withdrawals
+    const [todayStats] = await query(`
+      SELECT
+        COALESCE(SUM(amount), 0) AS amount,
+        COUNT(*) AS count
+      FROM withdrawals
+      WHERE status = 'approved'
+        AND DATE(updated_at) = CURRENT_DATE`);
+
+    // All-time approved withdrawals
+    const [totalStats] = await query(`
+      SELECT
+        COALESCE(SUM(amount), 0) AS amount,
+        COUNT(*) AS count
+      FROM withdrawals
+      WHERE status = 'approved'`);
+
+    // Yesterday's approved withdrawals
+    const [yesterdayStats] = await query(`
+      SELECT
+        COALESCE(SUM(amount), 0) AS amount,
+        COUNT(*) AS count
+      FROM withdrawals
+      WHERE status = 'approved'
+        AND DATE(updated_at) = CURRENT_DATE - INTERVAL '1 day'`);
+
+    // Last 7 days approved withdrawals
+    const [sevenDayStats] = await query(`
+      SELECT
+        COALESCE(SUM(amount), 0) AS amount,
+        COUNT(*) AS count
+      FROM withdrawals
+      WHERE status = 'approved'
+        AND updated_at >= CURRENT_DATE - INTERVAL '7 days'`);
+
+    res.json({
+      success: true,
+      data: {
+        today:      todayStats,
+        total:      totalStats,
+        yesterday:  yesterdayStats,
+        seven_days: sevenDayStats,
+      },
+    });
+  } catch (err) {
+    next(err);
+  }
+}
+
 async function listWithdrawals(req, res, next) {
   const page = Math.max(1, parseInt(req.query.page || '1'));
   const limit = Math.min(100, parseInt(req.query.limit || '25'));
@@ -672,7 +723,7 @@ async function getAdminLogs(req, res, next) {
 }
 
 module.exports = {
-  getDashboardStats, getRevenueChart,
+  getDashboardStats, getRevenueChart, getWithdrawalStats,
   listUsers, getUser, toggleBan, adjustBalance,
   listActivations, getActivation, deleteActivation, bulkDeleteActivations,
   listWithdrawals, reviewWithdrawal,
@@ -811,7 +862,7 @@ async function getSettings(req, res, next) {
 async function updateSetting(req, res, next) {
   const { key } = req.params;
   const { value } = req.body;
-  const allowed = ['default_language', 'min_withdrawal_amount', 'startup_message', 'bot_welcome_message', 'startup_message_enabled'];
+  const allowed = ['default_language', 'min_withdrawal_amount', 'startup_message', 'bot_welcome_message', 'startup_message_enabled', 'maintenance_mode'];
   if (!allowed.includes(key)) {
     return res.status(400).json({ success: false, message: 'Unknown setting key' });
   }
@@ -826,6 +877,9 @@ async function updateSetting(req, res, next) {
   }
   if (key === 'startup_message_enabled' && !['0', '1'].includes(String(value))) {
     return res.status(400).json({ success: false, message: 'startup_message_enabled must be 0 or 1' });
+  }
+  if (key === 'maintenance_mode' && !['0', '1'].includes(String(value))) {
+    return res.status(400).json({ success: false, message: 'maintenance_mode must be 0 or 1' });
   }
   try {
     await query(

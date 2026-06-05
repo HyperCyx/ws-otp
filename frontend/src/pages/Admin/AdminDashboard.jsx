@@ -129,18 +129,187 @@ function TopCountriesCard({ countries }) {
   );
 }
 
+// ── Withdrawal Stats Section ───────────────────────────────────────────────
+function WithdrawalStatsSection({ wdStats }) {
+  const [detailView, setDetailView] = useState('yesterday'); // 'yesterday' | '7days'
+
+  if (!wdStats) return null;
+
+  const todayAmt  = parseFloat(wdStats.today?.amount   || 0);
+  const todayCnt  = Number(wdStats.today?.count        || 0);
+  const totalAmt  = parseFloat(wdStats.total?.amount   || 0);
+  const totalCnt  = Number(wdStats.total?.count        || 0);
+
+  const detailData  = detailView === 'yesterday' ? wdStats.yesterday : wdStats.seven_days;
+  const detailAmt   = parseFloat(detailData?.amount || 0);
+  const detailCnt   = Number(detailData?.count       || 0);
+  const detailLabel = detailView === 'yesterday' ? 'Yesterday' : 'Last 7 Days';
+
+  return (
+    <div className="space-y-3">
+      {/* Section header */}
+      <div className="flex items-center gap-2">
+        <div
+          className="w-7 h-7 rounded-lg flex items-center justify-center flex-shrink-0"
+          style={{ background: 'rgba(239,68,68,0.15)' }}
+        >
+          <ArrowUpRight size={15} style={{ color: 'var(--accent-red)' }} />
+        </div>
+        <p className="font-semibold text-sm" style={{ color: 'var(--text-primary)' }}>
+          Withdrawal Statistics
+        </p>
+      </div>
+
+      {/* Today + Total highlight row */}
+      <div className="grid grid-cols-2 gap-3">
+        {/* Today */}
+        <div
+          className="rounded-2xl p-4"
+          style={{
+            background: 'linear-gradient(135deg, rgba(239,68,68,0.18) 0%, rgba(251,146,60,0.10) 100%)',
+            border: '1.5px solid rgba(239,68,68,0.35)',
+          }}
+        >
+          <p className="text-[10px] font-bold uppercase tracking-widest mb-1" style={{ color: 'var(--accent-red)' }}>
+            Withdrawn Today
+          </p>
+          <p className="text-2xl font-extrabold leading-none tabular-nums" style={{ color: 'var(--text-primary)' }}>
+            ${todayAmt.toFixed(4)}
+          </p>
+          <p className="text-xs mt-1.5" style={{ color: 'var(--text-muted)' }}>
+            {todayCnt} withdrawal{todayCnt !== 1 ? 's' : ''}
+          </p>
+          <div className="mt-2 flex items-center gap-1">
+            <span
+              className="inline-block w-1.5 h-1.5 rounded-full"
+              style={{ background: todayCnt > 0 ? 'var(--accent-red)' : 'var(--text-faint)' }}
+            />
+            <span className="text-[10px]" style={{ color: todayCnt > 0 ? 'var(--accent-red)' : 'var(--text-faint)' }}>
+              {todayCnt > 0 ? 'Active today' : 'None yet'}
+            </span>
+          </div>
+        </div>
+
+        {/* All-time total */}
+        <div
+          className="rounded-2xl p-4"
+          style={{
+            background: 'linear-gradient(135deg, rgba(99,102,241,0.18) 0%, rgba(139,92,246,0.10) 100%)',
+            border: '1.5px solid rgba(99,102,241,0.35)',
+          }}
+        >
+          <p className="text-[10px] font-bold uppercase tracking-widest mb-1" style={{ color: 'var(--accent-purple)' }}>
+            Total Withdrawn
+          </p>
+          <p className="text-2xl font-extrabold leading-none tabular-nums" style={{ color: 'var(--text-primary)' }}>
+            ${totalAmt.toFixed(4)}
+          </p>
+          <p className="text-xs mt-1.5" style={{ color: 'var(--text-muted)' }}>
+            {totalCnt} withdrawal{totalCnt !== 1 ? 's' : ''} ever
+          </p>
+          <div className="mt-2 flex items-center gap-1">
+            <span className="inline-block w-1.5 h-1.5 rounded-full" style={{ background: 'var(--accent-purple)' }} />
+            <span className="text-[10px]" style={{ color: 'var(--accent-purple)' }}>All-time</span>
+          </div>
+        </div>
+      </div>
+
+      {/* Detail toggle card */}
+      <div className="glass-card p-4">
+        {/* Toggle */}
+        <div
+          className="flex rounded-xl overflow-hidden mb-4"
+          style={{ background: 'var(--bg-tertiary)', padding: '3px', gap: '2px' }}
+        >
+          {[
+            { key: 'yesterday', label: 'Yesterday' },
+            { key: '7days',     label: 'Last 7 Days' },
+          ].map(({ key, label }) => (
+            <button
+              key={key}
+              onClick={() => setDetailView(key)}
+              className="flex-1 text-xs font-semibold py-1.5 rounded-lg transition-all"
+              style={{
+                background: detailView === key ? 'var(--bg-primary)' : 'transparent',
+                color: detailView === key ? 'var(--text-primary)' : 'var(--text-faint)',
+                border: detailView === key ? '1px solid var(--border-subtle)' : '1px solid transparent',
+              }}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+
+        {/* Detail figures */}
+        <div className="flex items-center justify-between">
+          <div>
+            <p className="text-[10px] uppercase font-semibold tracking-wider mb-0.5" style={{ color: 'var(--text-faint)' }}>
+              {detailLabel}
+            </p>
+            <p className="text-3xl font-extrabold tabular-nums" style={{ color: 'var(--text-primary)' }}>
+              ${detailAmt.toFixed(4)}
+            </p>
+            <p className="text-xs mt-1" style={{ color: 'var(--text-muted)' }}>
+              {detailCnt} approved withdrawal{detailCnt !== 1 ? 's' : ''}
+            </p>
+          </div>
+
+          <div
+            className="w-14 h-14 rounded-2xl flex items-center justify-center flex-shrink-0"
+            style={{
+              background: detailView === 'yesterday' ? 'rgba(14,165,233,0.15)' : 'rgba(16,185,129,0.15)',
+              border: `1px solid ${detailView === 'yesterday' ? 'rgba(14,165,233,0.35)' : 'rgba(16,185,129,0.35)'}`,
+            }}
+          >
+            <DollarSign
+              size={26}
+              style={{ color: detailView === 'yesterday' ? 'var(--accent-blue)' : 'var(--accent-green)' }}
+            />
+          </div>
+        </div>
+
+        {/* Mini progress vs total */}
+        {totalAmt > 0 && (
+          <div className="mt-4">
+            <div className="flex justify-between text-[10px] mb-1" style={{ color: 'var(--text-faint)' }}>
+              <span>{detailLabel} share</span>
+              <span className="font-semibold">
+                {((detailAmt / totalAmt) * 100).toFixed(1)}% of all-time
+              </span>
+            </div>
+            <div className="h-1.5 rounded-full overflow-hidden" style={{ background: 'var(--bg-tertiary)' }}>
+              <div
+                className="h-full rounded-full transition-all duration-500"
+                style={{
+                  width: `${Math.min(100, (detailAmt / totalAmt) * 100)}%`,
+                  background: detailView === 'yesterday'
+                    ? 'linear-gradient(90deg, var(--accent-blue), var(--accent-purple))'
+                    : 'linear-gradient(90deg, var(--accent-green), var(--accent-blue))',
+                }}
+              />
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 export default function AdminDashboard() {
   const [stats, setStats] = useState(null);
   const [chart, setChart] = useState([]);
+  const [wdStats, setWdStats] = useState(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     Promise.all([
       api.get('/admin/stats'),
       api.get('/admin/revenue?days=7'),
-    ]).then(([s, r]) => {
+      api.get('/admin/withdrawal-stats'),
+    ]).then(([s, r, w]) => {
       setStats(s.data?.data || null);
       setChart(Array.isArray(r.data?.data) ? r.data.data : []);
+      setWdStats(w.data?.data || null);
       setLoading(false);
     }).catch(() => setLoading(false));
   }, []);
@@ -176,7 +345,6 @@ export default function AdminDashboard() {
     <div className="space-y-5 animate-fade-in">
       <h1 className="text-lg font-bold" style={{ color: 'var(--text-primary)' }}>Dashboard Overview</h1>
 
-      {/* Stat cards — 2-col grid, today payout spans full width as a highlight */}
       <div className="grid grid-cols-2 gap-3">
         <StatCard icon={Users}       label="Total Users"          value={stats.users?.total_users ?? 0}
           sub={`+${stats.users?.new_today ?? 0} today`}           accent="var(--accent-blue)" />
@@ -187,6 +355,9 @@ export default function AdminDashboard() {
         <StatCard icon={ArrowUpRight} label="Pending Withdrawals" value={stats.pending_withdrawals?.count ?? 0}
           sub={`$${parseFloat(stats.pending_withdrawals?.total || 0).toFixed(2)}`} accent="var(--accent-orange)" />
       </div>
+
+      {/* ── Withdrawal Stats ── */}
+      <WithdrawalStatsSection wdStats={wdStats} />
 
       {/* ── Today's Payout Highlight ── */}
       <div

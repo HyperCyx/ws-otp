@@ -213,5 +213,6 @@ INSERT INTO app_settings (key, value) VALUES
   ('min_withdrawal_amount',   '1'),
   ('startup_message',         '📢 Welcome to OTP Activations! Submit your number to start earning rewards instantly! ⚡'),
   ('bot_welcome_message',     '👋 Привет, {first_name}!\n\nДобро пожаловать в НомерМаркет! Откройте мини-приложение и начните зарабатывать уже сегодня. 💰🚀'),
-  ('startup_message_enabled', '1')
+  ('startup_message_enabled', '1'),
+  ('maintenance_mode',        '0')
 ON CONFLICT (key) DO NOTHING;
