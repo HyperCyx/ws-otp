@@ -27,8 +27,9 @@ async function getDashboardStats(req, res, next) {
 
     const [walletStats] = await query(`
       SELECT
-        SUM(balance) as total_balance,
-        SUM(locked_balance) as total_locked,
+        SUM(balance)         as total_balance,
+        SUM(locked_balance)  as total_locked,
+        SUM(total_earned)    as total_earned,
         SUM(total_withdrawn) as total_withdrawn
       FROM wallets`);
 

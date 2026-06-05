@@ -491,21 +491,110 @@ export default function AdminDashboard() {
       <TopCountriesCard countries={stats.top_countries} />
 
       {/* Wallet summary */}
-      <div className="glass-card p-4 space-y-3">
-        <p className="text-xs font-semibold uppercase tracking-wider" style={{ color: 'var(--text-muted)' }}>
-          Platform Wallet Stats
-        </p>
-        {[
-          { label: 'Total User Balances', v: stats.wallet?.total_balance,   c: 'var(--text-primary)' },
-          { label: 'Locked (pending WD)', v: stats.wallet?.total_locked,    c: 'var(--accent-orange)' },
-          { label: 'Total Withdrawn',     v: stats.wallet?.total_withdrawn,  c: 'var(--accent-red)' },
-        ].map(({ label, v, c }) => (
-          <div key={label} className="flex justify-between items-center text-sm">
-            <span style={{ color: 'var(--text-muted)' }}>{label}</span>
-            <span className="font-bold" style={{ color: c }}>${parseFloat(v || 0).toFixed(4)}</span>
+      {(() => {
+        const earned   = parseFloat(stats.wallet?.total_earned    || 0);
+        const balance  = parseFloat(stats.wallet?.total_balance   || 0);
+        const locked   = parseFloat(stats.wallet?.total_locked    || 0);
+        const withdrawn = parseFloat(stats.wallet?.total_withdrawn || 0);
+        // balance + locked + withdrawn should equal total_earned
+        const accounted = balance + locked + withdrawn;
+        const discrepancy = Math.abs(earned - accounted) > 0.0001;
+        // Bar widths (% of total_earned)
+        const bPct = earned > 0 ? (balance   / earned) * 100 : 0;
+        const lPct = earned > 0 ? (locked    / earned) * 100 : 0;
+        const wPct = earned > 0 ? (withdrawn / earned) * 100 : 0;
+
+        return (
+          <div className="glass-card p-4 space-y-3">
+            {/* Header */}
+            <div className="flex items-center justify-between">
+              <p className="text-xs font-semibold uppercase tracking-wider" style={{ color: 'var(--text-muted)' }}>
+                Platform Wallet Stats
+              </p>
+              {discrepancy && (
+                <span className="text-[10px] font-bold px-2 py-0.5 rounded-full"
+                  style={{ background: 'rgba(239,68,68,0.15)', color: 'var(--accent-red)', border: '1px solid rgba(239,68,68,0.35)' }}>
+                  ⚠ discrepancy
+                </span>
+              )}
+            </div>
+
+            {/* Total Earned — headline */}
+            <div className="rounded-xl p-3 flex items-center justify-between"
+              style={{ background: 'var(--bg-tertiary)', border: '1px solid var(--border-subtle)' }}>
+              <div>
+                <p className="text-[10px] uppercase font-semibold tracking-wider mb-0.5" style={{ color: 'var(--text-faint)' }}>
+                  Total Earned (All Users)
+                </p>
+                <p className="text-xl font-extrabold tabular-nums" style={{ color: 'var(--accent-green)' }}>
+                  ${earned.toFixed(4)}
+                </p>
+              </div>
+              <span className="text-[10px] font-semibold px-2 py-1 rounded-lg"
+                style={{ background: 'rgba(16,185,129,0.15)', color: 'var(--accent-green)', border: '1px solid rgba(16,185,129,0.3)' }}>
+                lifetime
+              </span>
+            </div>
+
+            {/* Stacked flow bar */}
+            {earned > 0 && (
+              <div>
+                <div className="h-2.5 rounded-full overflow-hidden flex gap-px" style={{ background: 'var(--bg-tertiary)' }}>
+                  <div className="h-full rounded-l-full transition-all duration-500"
+                    style={{ width: `${bPct}%`, background: 'var(--accent-blue)' }} />
+                  {lPct > 0 && (
+                    <div className="h-full transition-all duration-500"
+                      style={{ width: `${lPct}%`, background: 'var(--accent-orange)' }} />
+                  )}
+                  <div className="h-full rounded-r-full transition-all duration-500"
+                    style={{ width: `${wPct}%`, background: 'var(--accent-red)' }} />
+                </div>
+                <div className="flex gap-3 mt-1.5 text-[10px]" style={{ color: 'var(--text-faint)' }}>
+                  <span className="flex items-center gap-1">
+                    <span className="w-1.5 h-1.5 rounded-full inline-block" style={{ background: 'var(--accent-blue)' }} />
+                    Available {bPct.toFixed(0)}%
+                  </span>
+                  {lPct > 0 && (
+                    <span className="flex items-center gap-1">
+                      <span className="w-1.5 h-1.5 rounded-full inline-block" style={{ background: 'var(--accent-orange)' }} />
+                      Locked {lPct.toFixed(0)}%
+                    </span>
+                  )}
+                  <span className="flex items-center gap-1">
+                    <span className="w-1.5 h-1.5 rounded-full inline-block" style={{ background: 'var(--accent-red)' }} />
+                    Withdrawn {wPct.toFixed(0)}%
+                  </span>
+                </div>
+              </div>
+            )}
+
+            {/* Row metrics */}
+            {[
+              { label: 'Available Balance', v: balance,   c: 'var(--accent-blue)',   dot: 'var(--accent-blue)'   },
+              { label: 'Locked (pending WD)', v: locked,  c: 'var(--accent-orange)', dot: 'var(--accent-orange)' },
+              { label: 'Total Withdrawn',  v: withdrawn,  c: 'var(--accent-red)',    dot: 'var(--accent-red)'    },
+            ].map(({ label, v, c, dot }) => (
+              <div key={label} className="flex justify-between items-center text-sm">
+                <span className="flex items-center gap-1.5" style={{ color: 'var(--text-muted)' }}>
+                  <span className="w-1.5 h-1.5 rounded-full flex-shrink-0" style={{ background: dot }} />
+                  {label}
+                </span>
+                <span className="font-bold tabular-nums" style={{ color: c }}>
+                  ${v.toFixed(4)}
+                </span>
+              </div>
+            ))}
+
+            {/* Integrity check footnote */}
+            <p className="text-[10px] text-right pt-1" style={{ color: discrepancy ? 'var(--accent-red)' : 'var(--text-faint)', borderTop: '1px solid var(--border-subtle)' }}>
+              {discrepancy
+                ? `⚠ ${balance.toFixed(4)} + ${locked.toFixed(4)} + ${withdrawn.toFixed(4)} = ${accounted.toFixed(4)} ≠ ${earned.toFixed(4)} earned`
+                : `✓ ${balance.toFixed(4)} + ${locked.toFixed(4)} + ${withdrawn.toFixed(4)} = ${earned.toFixed(4)}`}
+            </p>
           </div>
-        ))}
-      </div>
+        );
+      })()}
+
     </div>
   );
 }
