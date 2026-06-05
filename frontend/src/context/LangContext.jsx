@@ -37,7 +37,13 @@ export function LangProvider({ children }) {
       .finally(() => setSettingsLoaded(true));
   }, []);
 
-  useEffect(() => { refreshSettings(); }, [refreshSettings]);
+  useEffect(() => {
+    // Safety net: if the settings fetch never resolves (network down, etc.)
+    // unblock the app after 5 s so the user isn't stuck on LoadingScreen.
+    const timeout = setTimeout(() => setSettingsLoaded(true), 5000);
+    refreshSettings().finally(() => clearTimeout(timeout));
+  }, [refreshSettings]);
+
 
   const setLang = useCallback((l) => {
     localStorage.setItem('lang', l);

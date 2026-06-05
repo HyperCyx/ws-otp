@@ -35,8 +35,12 @@ function ProtectedAdmin({ children }) {
 }
 
 function AppInner() {
-  const { maintenanceMode } = useLang();
+  const { maintenanceMode, settingsLoaded } = useLang();
   const user = useAuthStore((s) => s.user);
+
+  // Hold rendering until we know the maintenance state — prevents the
+  // brief flash where the normal app renders before settings arrive.
+  if (!settingsLoaded) return <LoadingScreen />;
 
   // Non-admin users see the maintenance page when the setting is active.
   // Admins always have full access so they can turn maintenance off again.
